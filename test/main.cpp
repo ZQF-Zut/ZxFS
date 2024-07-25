@@ -12,7 +12,7 @@ auto main() -> int
         auto file_name_0 = ZQF::ZxFS::FileName(path_0);
         assert(file_name_0 == "123.jpg");
         auto fle_suffix_0 = ZQF::ZxFS::FileSuffix(path_0);
-        assert(fle_suffix_0 == "jpg");
+        assert(fle_suffix_0 == ".jpg");
         auto file_suffix_remove_0 = ZQF::ZxFS::FileSuffixDel(path_0);
         assert(file_suffix_remove_0 == "dirx/asfas/r/weg/wfqwr/123");
         auto file_stem_0 = ZQF::ZxFS::FileNameStem(path_0);
@@ -34,7 +34,7 @@ auto main() -> int
         auto file_name_3 = ZQF::ZxFS::FileName(path_3);
         assert(file_name_3 == ".");
         auto fle_suffix_3 = ZQF::ZxFS::FileSuffix(path_3);
-        assert(fle_suffix_3 == "");
+        assert(fle_suffix_3 == ".");
         auto file_suffix_remove_3 = ZQF::ZxFS::FileSuffixDel(path_3);
         assert(file_suffix_remove_3 == "dirx/asfas/r/weg/wfqwr/");
 
@@ -42,7 +42,7 @@ auto main() -> int
         auto file_name_4 = ZQF::ZxFS::FileName(path_4);
         assert(file_name_4 == "..");
         auto fle_suffix_4 = ZQF::ZxFS::FileSuffix(path_4);
-        assert(fle_suffix_4 == "");
+        assert(fle_suffix_4 == ".");
         auto file_suffix_remove_4 = ZQF::ZxFS::FileSuffixDel(path_4);
         assert(file_suffix_remove_4 == "dirx/asfas/r/weg/wfqwr/.");
 
@@ -50,7 +50,7 @@ auto main() -> int
         auto file_name_5 = ZQF::ZxFS::FileName(path_5);
         assert(file_name_5 == "my.jpg");
         auto fle_suffix_5 = ZQF::ZxFS::FileSuffix(path_5);
-        assert(fle_suffix_5 == "jpg");
+        assert(fle_suffix_5 == ".jpg");
         auto file_suffix_remove_5 = ZQF::ZxFS::FileSuffixDel(path_5);
         assert(file_suffix_remove_5 == "my");
         auto file_stem_5 = ZQF::ZxFS::FileNameStem(path_5);
@@ -62,8 +62,15 @@ auto main() -> int
         assert(file_suffix_remove_6 == "y");
 
         std::string_view path_7 = ".j";
+        auto fle_suffix_7 = ZQF::ZxFS::FileSuffix(path_7);
+        assert(fle_suffix_7 == ".j");
         auto file_suffix_remove_7 = ZQF::ZxFS::FileSuffixDel(path_7);
         assert(file_suffix_remove_7 == "");
+
+        std::string_view path_8 = ".";
+        auto fle_suffix_8 = ZQF::ZxFS::FileSuffix(path_8);
+        assert(fle_suffix_8 == ".");
+
 
         auto [self_dir_sv, self_dir_buf] = ZQF::ZxFS::SelfDir();
         auto [self_path_sv, self_path_buf] = ZQF::ZxFS::SelfPath();

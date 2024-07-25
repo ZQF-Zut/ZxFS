@@ -194,7 +194,7 @@ namespace ZQF::ZxFS
             }
             else if (*ite == '.')
             {
-                return msPath.substr(std::distance(ite, std::rend(msPath)));
+                return msPath.substr(std::distance(ite, std::rend(msPath)) - 1);
             }
         }
 
