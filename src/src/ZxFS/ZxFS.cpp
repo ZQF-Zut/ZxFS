@@ -201,10 +201,32 @@ namespace ZQF::ZxFS
         return { "", 0 };
     }
 
+    auto FileSuffixDel(const std::string_view msPath) -> std::string_view
+    {
+        for (auto ite = std::rbegin(msPath); ite != std::rend(msPath); ite++)
+        {
+            if (*ite == '/')
+            {
+                break;
+            }
+            else if (*ite == '.')
+            {
+                return msPath.substr(0, std::distance(ite, std::rend(msPath)) - 1);
+            }
+        }
+
+        return msPath;
+    }
+
     auto FileName(const std::string_view msPath) -> std::string_view
     {
         const auto pos = msPath.rfind('/');
         return pos != std::string_view::npos ? msPath.substr(pos + 1) : msPath;
+    }
+
+    auto FileNameStem(const std::string_view msPath) -> std::string_view
+    {
+        return ZxFS::FileSuffixDel(ZxFS::FileName(msPath));
     }
 
     auto FileDelete(const std::string_view msPath) -> bool

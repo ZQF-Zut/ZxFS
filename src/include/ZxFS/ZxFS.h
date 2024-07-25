@@ -32,7 +32,9 @@ namespace ZQF::ZxFS
     auto SelfPath() -> std::pair<std::string_view, std::unique_ptr<char[]>>;
 
 	auto FileName(const std::string_view msPath) -> std::string_view;
+    auto FileNameStem(const std::string_view msPath) -> std::string_view;
     auto FileSuffix(const std::string_view msPath) -> std::string_view;
+    auto FileSuffixDel(const std::string_view msPath) -> std::string_view;
 
     auto FileDelete(const std::string_view msPath) -> bool;
     auto FileCopy(const std::string_view msExistPath, const std::string_view msNewPath, bool isFailIfExists) -> bool;
