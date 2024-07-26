@@ -3,6 +3,8 @@
 #include <iostream>
 #include <ZxFS/ZxFS.h>
 
+#include 	<direct.h>
+
 
 auto main() -> int
 {
@@ -81,12 +83,12 @@ auto main() -> int
         auto self_path_exist = ZQF::ZxFS::Exist(self_path_sv);
         assert(self_path_exist == true);
 
-        ZQF::ZxFS::DirDelete("123/",false);
-        auto mkdir_status0 = ZQF::ZxFS::DirMake("123/", false);
+        ZQF::ZxFS::DirDelete("123x/",false);
+        auto mkdir_status0 = ZQF::ZxFS::DirMake("123x/", false);
         assert(mkdir_status0 == true);
-        auto check_mkdir_status_0 = ZQF::ZxFS::Exist("123/");
+        auto check_mkdir_status_0 = ZQF::ZxFS::Exist("123x/");
         assert(check_mkdir_status_0 == true);
-        ZQF::ZxFS::DirDelete("123/", false);
+        ZQF::ZxFS::DirDelete("123x/", false);
 
 
         bool copy_status_0 = ZQF::ZxFS::FileCopy(self_path_sv, "test.bin", false);
@@ -95,14 +97,25 @@ auto main() -> int
         bool copy_status_1 = ZQF::ZxFS::FileCopy(self_path_sv, "test.bin", true);
         assert(copy_status_1 == false);
 
+        ZQF::ZxFS::DirMake("weufbuiwef/214124/41241/", true);
+        bool move_file_status_0 = ZQF::ZxFS::FileMove("test.bin", "weufbuiwef/214124/41241/test.bin");
+        assert(move_file_status_0 == true);
+
+        bool move_file_status_1 = ZQF::ZxFS::FileMove("weufbuiwef/214124/41241/test.bin", "test.bin");
+        assert(move_file_status_1 == true);
+
         bool del_status = ZQF::ZxFS::FileDelete("test.bin");
         assert(del_status == true);
 
         for (ZQF::ZxFS::Walk walk{ self_dir_sv }; walk.NextFile(); )
         {
-            std::println("{}", walk.GetName());
+            std::println("{}{}", walk.GetSearchDir(), walk.GetName());
         }
 
+        auto dir_make_recursive_status = ZQF::ZxFS::DirMake("123/41245/215/125/1251/", true);
+        assert(dir_make_recursive_status == true);
+        assert(ZQF::ZxFS::Exist("123/41245/215/125/1251/"));
+        ZQF::ZxFS::DirDelete("123/", true);
 
         [[maybe_unused]] int x = 0;
 
