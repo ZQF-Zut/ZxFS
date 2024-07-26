@@ -440,7 +440,7 @@ namespace ZQF::ZxFS
             if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }
             if (entry_ptr->d_type != DT_REG) { continue; }
 
-            m_nNameBytes = std::strlen(entry_ptr->d_name) + 1;
+            m_nNameBytes = std::strlen(entry_ptr->d_name);
             m_aName = entry_ptr->d_name;
             return true;
         }
