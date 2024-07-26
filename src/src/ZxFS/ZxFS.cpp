@@ -278,7 +278,7 @@ namespace ZQF::ZxFS
             path_buffer[wsPath.size() + 0] = L'*';
             path_buffer[wsPath.size() + 1] = L'\0';
         }
-        
+
         WIN32_FIND_DATAW find_data;
         const auto hfind = ::FindFirstFileW(path_buffer, &find_data);
         if (hfind == INVALID_HANDLE_VALUE) { return false; }
@@ -315,6 +315,7 @@ namespace ZQF::ZxFS
 
     auto DirContentDelete(const std::string_view msPath) -> bool
     {
+        if (!msPath.ends_with('/')) { return false; }
         wchar_t wide_path[ZXFS_MAX_PATH];
         Private::PathUTF8ToWide(msPath, wide_path);
         return DirContentDeleteImp(wide_path);
@@ -370,6 +371,255 @@ namespace ZQF::ZxFS
     }
 }
 #elif __linux__
+#include <unistd.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <sys/stat.h>
+
+namespace ZQF::ZxFS
+{
+    static auto GetPathMaxBytes() -> ssize_t
+    {
+        auto path_max_byte_ret = ::pathconf(".", _PC_PATH_MAX);
+        return static_cast<ssize_t>(path_max_byte_ret == -1 ? PATH_MAX : path_max_byte_ret);
+    }
+
+    auto SelfDir() -> std::pair<std::string_view, std::unique_ptr<char[]>>
+    {
+        ssize_t path_max_byte = ZxFS::GetPathMaxBytes();
+
+        do
+        {
+            auto buffer = std::make_unique_for_overwrite<char[]>(path_max_byte);
+            const auto write_bytes = readlink("/proc/self/cwd", buffer.get(), path_max_byte);
+            if (write_bytes == -1) { break; }
+            if (write_bytes != path_max_byte)
+            {
+                buffer[write_bytes + 0] = '/';
+                buffer[write_bytes + 1] = {};
+                return { { buffer.get(), static_cast<std::size_t>(write_bytes) + 1 }, std::move(buffer)};
+            }
+            path_max_byte *= 2;
+        } while (true);
+
+        return { "", nullptr };
+    }
+
+    auto SelfPath() -> std::pair<std::string_view, std::unique_ptr<char[]>>
+    {
+        ssize_t path_max_byte = ZxFS::GetPathMaxBytes();
+
+        do
+        {
+            auto buffer = std::make_unique_for_overwrite<char[]>(path_max_byte);
+            const auto write_bytes = readlink("/proc/self/exe", buffer.get(), path_max_byte);
+            if (write_bytes == -1) { break; }
+            if (write_bytes != path_max_byte)
+            {
+                buffer[write_bytes] = {};
+                return { { buffer.get(), static_cast<std::size_t>(write_bytes) }, std::move(buffer) };
+            }
+            path_max_byte *= 2;
+        } while (true);
+
+        return { "", nullptr };
+    }
+
+    auto FileName(const std::string_view msPath) -> std::string_view
+    {
+        const auto pos = msPath.rfind('/');
+        return pos != std::string_view::npos ? msPath.substr(pos + 1) : msPath;
+    }
+
+    auto FileNameStem(const std::string_view msPath) -> std::string_view
+    {
+        return ZxFS::FileSuffixDel(ZxFS::FileName(msPath));
+    }
+
+    auto FileSuffix(const std::string_view msPath) -> std::string_view
+    {
+        for (auto ite = std::rbegin(msPath); ite != std::rend(msPath); ite++)
+        {
+            if (*ite == '/')
+            {
+                break;
+            }
+            else if (*ite == '.')
+            {
+                return msPath.substr(std::distance(ite, std::rend(msPath)) - 1);
+            }
+        }
+
+        return { "", 0 };
+    }
+
+    auto FileSuffixDel(const std::string_view msPath) -> std::string_view
+    {
+        for (auto ite = std::rbegin(msPath); ite != std::rend(msPath); ite++)
+        {
+            if (*ite == '/')
+            {
+                break;
+            }
+            else if (*ite == '.')
+            {
+                return msPath.substr(0, std::distance(ite, std::rend(msPath)) - 1);
+            }
+        }
+
+        return msPath;
+    }
+
+    auto FileDelete(const std::string_view msPath) -> bool
+    {
+        return ::remove(msPath.data()) != -1;
+    }
+
+    auto FileMove(const std::string_view msExistPath, const std::string_view msNewPath) -> bool
+    {
+        return ::rename(msExistPath.data(), msNewPath.data()) != -1;
+    }
+
+    auto FileCopy(const std::string_view msExistPath, const std::string_view msNewPath, bool isFailIfExists) -> bool
+    {
+        const auto fd_exist = ::open(msExistPath.data(), O_RDONLY);
+        if (fd_exist == -1)
+        {
+            return false;
+        }
+
+        const auto fd_new = ::open(msNewPath.data(), isFailIfExists ? O_CREAT | O_WRONLY | O_EXCL : O_CREAT | O_WRONLY | O_TRUNC, 0777);
+        if (fd_new == -1)
+        {
+            ::close(fd_exist);
+            return false;
+        }
+
+        struct stat st;
+        const auto fstat_status = fstat(fd_exist, &st);
+        if (fstat_status == -1)
+        {
+            ::close(fd_exist);
+            ::close(fd_new);
+            return false;
+        }
+
+        ssize_t cp_bytes{};
+        auto remain_bytes = st.st_size;
+        do
+        {
+            cp_bytes = ::copy_file_range(fd_exist, 0, fd_new, 0, remain_bytes, 0);
+            if (cp_bytes == -1) { break; }
+            remain_bytes -= cp_bytes;
+        } while (remain_bytes > 0 && cp_bytes > 0);
+
+        ::close(fd_exist);
+        ::close(fd_new);
+        return remain_bytes == 0 ? true : false;
+    }
+
+    auto FileSize(const std::string_view msPath) -> std::optional<std::uint64_t>
+    {
+        struct stat st;
+        const auto status = stat(msPath.data(), &st);
+        return (status != -1) ? std::optional{ static_cast<std::uint16_t>(st.st_size) } : std::nullopt;
+    }
+
+    static auto DirContentDeleteImp(const std::string_view msPath, ssize_t nPathMaxBytes) -> bool
+    {
+        if (msPath.size() >= static_cast<std::size_t>(nPathMaxBytes)) { return false; }
+
+        auto path_buffer = std::make_unique_for_overwrite<char[]>(static_cast<std::size_t>(nPathMaxBytes));
+        {
+            std::memcpy(path_buffer.get(), msPath.data(), msPath.size() * sizeof(char));
+            path_buffer[msPath.size()] = '\0';
+        }
+
+        const auto dir_ptr = ::opendir(path_buffer.get());
+        if (dir_ptr == nullptr) { return false; }
+
+        while (const auto entry_ptr = ::readdir(dir_ptr))
+        {
+            if ((*reinterpret_cast<std::uint16_t*>(entry_ptr->d_name)) == std::uint32_t(0x002E)) { continue; }
+            if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }
+
+            const std::string_view name{ entry_ptr->d_name };
+            const auto path_bytes = msPath.size() + name.size();
+            if ((path_bytes + 1) >= static_cast<std::size_t>(nPathMaxBytes)) { return false; }
+            ::memcpy(path_buffer.get() + msPath.size(), name.data(), name.size());
+            if (entry_ptr->d_type == DT_DIR)
+            {
+                path_buffer[path_bytes + 0] = '/';
+                path_buffer[path_bytes + 1] = '\0';
+                bool status = ZxFS::DirContentDeleteImp({ path_buffer.get(), path_bytes + 1 }, nPathMaxBytes);
+                if (status == false) { return false; }
+                ::rmdir(path_buffer.get());
+            }
+            else
+            {
+                path_buffer[path_bytes] = '\0';
+                ::remove(path_buffer.get());
+            }
+        }
+
+        return ::closedir(dir_ptr) != -1 ? true : false;
+    }
+
+    auto DirContentDelete(const std::string_view msPath) -> bool
+    {
+        if (!msPath.ends_with('/')) { return false; }
+        return DirContentDeleteImp(msPath, ZxFS::GetPathMaxBytes());
+    }
+
+    auto DirDelete(const std::string_view msPath, bool isRecursive) -> bool
+    {
+        if (!msPath.ends_with('/')) { return false; }
+        if (isRecursive) { DirContentDeleteImp(msPath, ZxFS::GetPathMaxBytes()); }
+        return ::rmdir(msPath.data()) != -1;
+    }
+
+    auto DirMake(const std::string_view msPath, bool isRecursive) -> bool
+    {
+        if (!msPath.ends_with('/')) { return false; }
+
+        if (!isRecursive)
+        {
+            return ::mkdir(msPath.data(), 0777) != -1;
+        }
+        else
+        {
+            auto path_buffer = std::make_unique_for_overwrite<char[]>(msPath.size() + 1);
+            std::memcpy(path_buffer.get(), msPath.data(), msPath.size());
+            path_buffer[msPath.size()] = {};
+
+            char* cur_path_cstr = path_buffer.get();
+            const char* org_path_cstr = path_buffer.get();
+
+            while (*cur_path_cstr++ != '\0')
+            {
+                if (*cur_path_cstr != '/') { continue; }
+
+                *cur_path_cstr = {};
+                {
+                    if (::access(org_path_cstr, X_OK) == -1)
+                    {
+                        ::mkdir(org_path_cstr, 0777);
+                    }
+                }
+                *cur_path_cstr = '/';
+                cur_path_cstr++;
+            }
+
+            return true;
+        }
+    }
+
+    auto Exist(const std::string_view msPath) -> bool
+    {
+        return ::access(msPath.data(), F_OK) != -1;
+    }
+}
+
 #endif
 
 
