@@ -32,7 +32,7 @@ namespace ZQF::ZxFS::Private
 
     static auto PathUTF8ToWide(const std::string_view msPath, wchar_t* wpBuffer) -> std::size_t
     {
-        const auto char_cnt = static_cast<std::size_t>(::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, msPath.data(), static_cast<int>(msPath.size()), wpBuffer, static_cast<int>(ZXFS_MAX_PATH)));
+        const auto char_cnt = static_cast<std::size_t>(::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, msPath.data(), static_cast<int>(msPath.size()), wpBuffer, MAX_PATH));
         wpBuffer[char_cnt] = {};
         return char_cnt;
     }
@@ -40,7 +40,7 @@ namespace ZQF::ZxFS::Private
     static auto PathWideToUTF8(const std::wstring_view wsPath, char* cpBuffer) -> std::size_t
     {
         BOOL not_all_cvt = TRUE;
-        const auto bytes = static_cast<std::size_t>(::WideCharToMultiByte(CP_UTF8, 0, wsPath.data(), static_cast<int>(wsPath.size()), cpBuffer, static_cast<int>(ZXFS_MAX_PATH), nullptr, &not_all_cvt));
+        const auto bytes = static_cast<std::size_t>(::WideCharToMultiByte(CP_UTF8, 0, wsPath.data(), static_cast<int>(wsPath.size()), cpBuffer, MAX_PATH, nullptr, &not_all_cvt));
         cpBuffer[bytes] = {};
         return bytes;
     }
@@ -52,18 +52,20 @@ namespace ZQF::ZxFS
     {
         if (!msWalkDir.ends_with('/')) { throw std::runtime_error(std::format("ZxPath::Walk : dir format error! -> \'{}\'", msWalkDir)); }
 
-        std::memcpy(m_aSearchDir, msWalkDir.data(), msWalkDir.size() * sizeof(char));
-        m_aSearchDir[msWalkDir.size() + 0] = '*';
-        m_aSearchDir[msWalkDir.size() + 1] = '\0';
-        m_nSearchDirBytes = msWalkDir.size() + 1;
+        wchar_t wide_path[MAX_PATH];
+        size_t wide_path_char_cnt = Private::PathUTF8ToWide(msWalkDir, wide_path);
+        wide_path[wide_path_char_cnt + 0] = L'*';
+        wide_path[wide_path_char_cnt + 1] = L'\0';
 
-        wchar_t wide_path[ZXFS_MAX_PATH];
-        wide_path[0] = {};
         WIN32_FIND_DATAW find_data;
-        Private::PathUTF8ToWide({ m_aSearchDir ,msWalkDir.size() + 1 }, wide_path);
         const auto hfind = ::FindFirstFileW(wide_path, &find_data);
         if (hfind == INVALID_HANDLE_VALUE) { throw std::runtime_error(std::format("ZxPath::Walk : dir open error! -> \'{}\'", msWalkDir)); }
         m_hFind = reinterpret_cast<std::uintptr_t>(hfind);
+
+        m_upSearchDir = std::make_unique_for_overwrite<char[]>((msWalkDir.size() + 1) * sizeof(char));
+        std::memcpy(m_upSearchDir.get(), msWalkDir.data(), msWalkDir.size() * sizeof(char));
+        m_nSearchDirBytes = msWalkDir.size() * sizeof(char);
+        m_upSearchDir[m_nSearchDirBytes] = '\0';
     }
 
     Walk::~Walk()
@@ -73,7 +75,7 @@ namespace ZQF::ZxFS
 
     auto Walk::GetPath() const -> std::string
     {
-        return std::string{}.append(m_aSearchDir, m_nSearchDirBytes - 1).append(m_aName, m_nNameBytes);
+        return std::string{}.append(m_upSearchDir.get(), m_nSearchDirBytes).append(m_aName, m_nNameBytes);
     }
 
     auto Walk::GetName() const -> std::string_view
@@ -83,7 +85,7 @@ namespace ZQF::ZxFS
 
     auto Walk::GetSearchDir() const->std::string_view
     {
-        return { m_aSearchDir, m_nSearchDirBytes - 1 };
+        return { m_upSearchDir.get(), m_nSearchDirBytes };
     }
 
     auto Walk::NextDir() -> bool
@@ -91,16 +93,15 @@ namespace ZQF::ZxFS
         WIN32_FIND_DATAW find_data;
         while (::FindNextFileW(reinterpret_cast<HANDLE>(m_hFind), &find_data))
         {
-            if ((*reinterpret_cast<std::uint32_t*>(find_data.cFileName)) == uint32_t(0x0000002E)) { continue; }
-            if (((*reinterpret_cast<std::uint64_t*>(find_data.cFileName)) & 0x000000FFFFFFFFFF) == uint64_t(0x00000000002E002E)) { continue; }
+            if ((*reinterpret_cast<std::uint32_t*>(find_data.cFileName)) == std::uint32_t(0x0000002E)) { continue; }
+            if (((*reinterpret_cast<std::uint64_t*>(find_data.cFileName)) & 0x000000FFFFFFFFFF) == std::uint64_t(0x00000000002E002E)) { continue; }
 
             if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
-                std::size_t char_cnt = ::wcslen(find_data.cFileName);
-                if ((char_cnt + 1) >= MAX_PATH) { return false; }
-                find_data.cFileName[char_cnt + 0] = L'/';
-                find_data.cFileName[char_cnt + 1] = L'\0';
-                m_nNameBytes = Private::PathWideToUTF8({ find_data.cFileName, char_cnt + 1 }, m_aName);
+                m_nNameBytes = Private::PathWideToUTF8({ find_data.cFileName }, m_aName);
+                if ((m_nNameBytes + 1) >= MAX_PATH) { return false; }
+                m_aName[m_nNameBytes + 0] = '/';
+                m_aName[m_nNameBytes + 1] = '\0';
                 return true;
             }
         }
@@ -113,8 +114,8 @@ namespace ZQF::ZxFS
         WIN32_FIND_DATAW find_data;
         while (::FindNextFileW(reinterpret_cast<HANDLE>(m_hFind), &find_data))
         {
-            if ((*reinterpret_cast<std::uint32_t*>(find_data.cFileName)) == uint32_t(0x0000002E)) { continue; }
-            if (((*reinterpret_cast<std::uint64_t*>(find_data.cFileName)) & 0x000000FFFFFFFFFF) == uint64_t(0x00000000002E002E)) { continue; }
+            if ((*reinterpret_cast<std::uint32_t*>(find_data.cFileName)) == std::uint32_t(0x0000002E)) { continue; }
+            if (((*reinterpret_cast<std::uint64_t*>(find_data.cFileName)) & 0x000000FFFFFFFFFF) == std::uint64_t(0x00000000002E002E)) { continue; }
 
             if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
             {
@@ -226,15 +227,15 @@ namespace ZQF::ZxFS
 
     auto FileDelete(const std::string_view msPath) -> bool
     {
-        wchar_t wide_path[ZXFS_MAX_PATH];
+        wchar_t wide_path[MAX_PATH];
         Private::PathUTF8ToWide(msPath, wide_path);
         return ::DeleteFileW(wide_path) != FALSE;
     }
 
     auto FileMove(const std::string_view msExistPath, const std::string_view msNewPath) -> bool
     {
-        wchar_t wide_exist_path[ZXFS_MAX_PATH];
-        wchar_t wide_new_path[ZXFS_MAX_PATH];
+        wchar_t wide_exist_path[MAX_PATH];
+        wchar_t wide_new_path[MAX_PATH];
         Private::PathUTF8ToWide(msExistPath, wide_exist_path);
         Private::PathUTF8ToWide(msNewPath, wide_new_path);
         return ::MoveFileW(wide_exist_path, wide_new_path) != FALSE;
@@ -242,8 +243,8 @@ namespace ZQF::ZxFS
 
     auto FileCopy(const std::string_view msExistPath, const std::string_view msNewPath, bool isFailIfExists) -> bool
     {
-        wchar_t wide_exist_path[ZXFS_MAX_PATH];
-        wchar_t wide_new_path[ZXFS_MAX_PATH];
+        wchar_t wide_exist_path[MAX_PATH];
+        wchar_t wide_new_path[MAX_PATH];
         Private::PathUTF8ToWide(msExistPath, wide_exist_path);
         Private::PathUTF8ToWide(msNewPath, wide_new_path);
         return ::CopyFileW(wide_exist_path, wide_new_path, isFailIfExists ? TRUE : FALSE) != FALSE;
@@ -252,7 +253,7 @@ namespace ZQF::ZxFS
     auto FileSize(const std::string_view msPath) -> std::optional<std::uint64_t>
     {
         WIN32_FIND_DATAW find_data;
-        wchar_t wide_path[ZXFS_MAX_PATH];
+        wchar_t wide_path[MAX_PATH];
         Private::PathUTF8ToWide(msPath, wide_path);
         const auto hfind = ::FindFirstFileW(wide_path, &find_data);
         if (hfind != INVALID_HANDLE_VALUE)
@@ -270,9 +271,9 @@ namespace ZQF::ZxFS
 
     static auto DirContentDeleteImp(const std::wstring_view wsPath) -> bool
     {
-        if ((wsPath.size() + 1) >= ZXFS_MAX_PATH) { return false; }
+        if ((wsPath.size() + 1) >= MAX_PATH) { return false; }
 
-        WCHAR path_buffer[ZXFS_MAX_PATH];
+        WCHAR path_buffer[MAX_PATH];
         {
             std::memcpy(path_buffer, wsPath.data(), wsPath.size() * sizeof(wchar_t));
             path_buffer[wsPath.size() + 0] = L'*';
@@ -290,7 +291,7 @@ namespace ZQF::ZxFS
 
             std::wstring_view item_name{ find_data.cFileName };
             std::size_t item_path_size = wsPath.size() + item_name.size();
-            if ((item_path_size + 1) >= ZXFS_MAX_PATH) { return false; }
+            if ((item_path_size + 1) >= MAX_PATH) { return false; }
 
             std::memcpy(path_buffer + wsPath.size(), item_name.data(), (item_name.size() + 1) * sizeof(wchar_t));
 
@@ -316,7 +317,7 @@ namespace ZQF::ZxFS
     auto DirContentDelete(const std::string_view msPath) -> bool
     {
         if (!msPath.ends_with('/')) { return false; }
-        wchar_t wide_path[ZXFS_MAX_PATH];
+        wchar_t wide_path[MAX_PATH];
         Private::PathUTF8ToWide(msPath, wide_path);
         return DirContentDeleteImp(wide_path);
     }
@@ -324,7 +325,7 @@ namespace ZQF::ZxFS
     auto DirDelete(const std::string_view msPath, bool isRecursive) -> bool
     {
         if (!msPath.ends_with('/')) { return false; }
-        wchar_t wide_path[ZXFS_MAX_PATH];
+        wchar_t wide_path[MAX_PATH];
         std::size_t char_cnt = Private::PathUTF8ToWide(msPath, wide_path);
         if (isRecursive) { DirContentDeleteImp({ wide_path ,char_cnt }); }
         return ::RemoveDirectoryW(wide_path) != FALSE;
@@ -334,7 +335,7 @@ namespace ZQF::ZxFS
     {
         if (!msPath.ends_with('/')) { return false; }
 
-        wchar_t wide_path[ZXFS_MAX_PATH];
+        wchar_t wide_path[MAX_PATH];
         Private::PathUTF8ToWide(msPath, wide_path);
 
         if (!isRecursive)
@@ -365,7 +366,7 @@ namespace ZQF::ZxFS
 
     auto Exist(const std::string_view msPath) -> bool
     {
-        wchar_t wide_path[ZXFS_MAX_PATH];
+        wchar_t wide_path[MAX_PATH];
         Private::PathUTF8ToWide(msPath, wide_path);
         return ::GetFileAttributesW(wide_path) == INVALID_FILE_ATTRIBUTES ? false : true;
     }
@@ -375,6 +376,83 @@ namespace ZQF::ZxFS
 #include <fcntl.h>
 #include <dirent.h>
 #include <sys/stat.h>
+
+namespace ZQF::ZxFS
+{
+    Walk::Walk(const std::string_view msWalkDir)
+    {
+        if (!msWalkDir.ends_with('/')) { throw std::runtime_error(std::format("ZxPath::Walk : dir format error! -> \'{}\'", msWalkDir)); }
+
+        const auto dir_ptr = ::opendir(msWalkDir.data());
+        if (dir_ptr == nullptr) { throw std::runtime_error(std::format("ZxPath::Walk : dir open error! -> \'{}\'", msWalkDir)); }
+        m_hFind = reinterpret_cast<std::uintptr_t>(dir_ptr);
+
+        const auto walk_dir_bytes = msWalkDir.size() * sizeof(char);
+        m_upSearchDir = std::make_unique_for_overwrite<char[]>(walk_dir_bytes + 1);
+        std::memcpy(m_upSearchDir.get(), msWalkDir.data(), walk_dir_bytes);
+        m_nSearchDirBytes = walk_dir_bytes;
+        m_upSearchDir[m_nSearchDirBytes] = '\0';
+    }
+
+    Walk::~Walk()
+    {
+        ::closedir(reinterpret_cast<DIR*>(m_hFind));
+    }
+
+    auto Walk::GetPath() const -> std::string
+    {
+        return std::string{}.append(m_upSearchDir.get(), m_nSearchDirBytes).append(m_aName, m_nNameBytes);
+    }
+
+    auto Walk::GetName() const -> std::string_view
+    {
+        return { m_aName, m_nNameBytes };
+    }
+
+    auto Walk::GetSearchDir() const->std::string_view
+    {
+        return { m_upSearchDir.get(), m_nSearchDirBytes };
+    }
+
+    auto Walk::NextDir() -> bool
+    {
+        while (const auto entry_ptr = ::readdir(reinterpret_cast<DIR*>(m_hFind)))
+        {
+            if ((*reinterpret_cast<std::uint16_t*>(entry_ptr->d_name)) == std::uint32_t(0x002E)) { continue; }
+            if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }
+            if (entry_ptr->d_type != DT_DIR) { continue; }
+
+            m_nNameBytes = std::strlen(entry_ptr->d_name);
+            m_aName = entry_ptr->d_name;
+            m_aName[m_nNameBytes + 0] = '/';
+            m_aName[m_nNameBytes + 1] = '\0';
+            return true;
+        }
+
+        return false;
+    }
+
+    auto Walk::NextFile() -> bool
+    {
+        while (const auto entry_ptr = ::readdir(reinterpret_cast<DIR*>(m_hFind)))
+        {
+            if ((*reinterpret_cast<std::uint16_t*>(entry_ptr->d_name)) == std::uint32_t(0x002E)) { continue; }
+            if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }
+            if (entry_ptr->d_type != DT_REG) { continue; }
+
+            m_nNameBytes = std::strlen(entry_ptr->d_name) + 1;
+            m_aName = entry_ptr->d_name;
+            return true;
+        }
+
+        return false;
+    }
+
+    auto Walk::IsSuffix(const std::string_view msSuffix) const -> bool
+    {
+        return ZxFS::FileSuffix(m_aName) == msSuffix ? true : false;
+    }
+}
 
 namespace ZQF::ZxFS
 {
@@ -397,7 +475,7 @@ namespace ZQF::ZxFS
             {
                 buffer[write_bytes + 0] = '/';
                 buffer[write_bytes + 1] = {};
-                return { { buffer.get(), static_cast<std::size_t>(write_bytes) + 1 }, std::move(buffer)};
+                return { { buffer.get(), static_cast<std::size_t>(write_bytes) + 1 }, std::move(buffer) };
             }
             path_max_byte *= 2;
         } while (true);
@@ -525,7 +603,7 @@ namespace ZQF::ZxFS
         return (status != -1) ? std::optional{ static_cast<std::uint16_t>(st.st_size) } : std::nullopt;
     }
 
-    static auto DirContentDeleteImp(const std::string_view msPath, ssize_t nPathMaxBytes) -> bool
+    static auto DirContentDeleteImp(const std::string_view msPath, const ssize_t nPathMaxBytes) -> bool
     {
         if (msPath.size() >= static_cast<std::size_t>(nPathMaxBytes)) { return false; }
 
@@ -589,7 +667,7 @@ namespace ZQF::ZxFS
         else
         {
             auto path_buffer = std::make_unique_for_overwrite<char[]>(msPath.size() + 1);
-            std::memcpy(path_buffer.get(), msPath.data(), msPath.size());
+            std::memcpy(path_buffer.get(), msPath.data(), msPath.size() * sizeof(char));
             path_buffer[msPath.size()] = {};
 
             char* cur_path_cstr = path_buffer.get();

@@ -7,15 +7,17 @@
 
 namespace ZQF::ZxFS
 {
-    constexpr std::size_t ZXFS_MAX_PATH = 512;
-
 	class Walk
 	{
 	private:
         std::uintptr_t m_hFind{};
-        char m_aName[ZXFS_MAX_PATH]{};
+#ifdef _WIN32
+        char m_aName[260]{};
+#elif __linux__
+        char* m_aName{};
+#endif
         std::size_t m_nNameBytes{};
-        char m_aSearchDir[ZXFS_MAX_PATH];
+        std::unique_ptr<char[]> m_upSearchDir;
         std::size_t m_nSearchDirBytes{};
 
 	public:

@@ -116,10 +116,10 @@ auto main() -> int
 
         ZQF::ZxFS::DirDelete("weufbuiwef/", true);
 
-        //for (ZQF::ZxFS::Walk walk{ self_dir_sv }; walk.NextFile(); )
-        //{
-        //    std::println("{}{}", walk.GetSearchDir(), walk.GetName());
-        //}
+        for (ZQF::ZxFS::Walk walk{ self_dir_sv }; walk.NextFile(); )
+        {
+            std::println("{}\n{}", walk.GetSearchDir(), walk.GetName());
+        }
 
         auto dir_make_recursive_status = ZQF::ZxFS::DirMake("123/41245/215/125/1251/", true);
         MyAssert(dir_make_recursive_status == true);
@@ -128,7 +128,7 @@ auto main() -> int
 
         [[maybe_unused]] int x = 0;
 
-        std::print("all passed!");
+        std::println("all passed!");
     }
     catch (const std::exception& err)
     {
