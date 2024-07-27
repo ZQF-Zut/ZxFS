@@ -98,10 +98,11 @@ namespace ZQF::ZxFS
 
             if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
-                m_nNameBytes = Private::PathWideToUTF8({ find_data.cFileName }, m_aName);
-                if ((m_nNameBytes + 1) >= MAX_PATH) { return false; }
-                m_aName[m_nNameBytes + 0] = '/';
-                m_aName[m_nNameBytes + 1] = '\0';
+                auto name_bytes = Private::PathWideToUTF8({ find_data.cFileName }, m_aName);
+                if ((name_bytes + 1) >= MAX_PATH) { return false; }
+                m_aName[name_bytes + 0] = '/';
+                m_aName[name_bytes + 1] = '\0';
+                m_nNameBytes = name_bytes + 1;
                 return true;
             }
         }
@@ -422,10 +423,11 @@ namespace ZQF::ZxFS
             if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }
             if (entry_ptr->d_type != DT_DIR) { continue; }
 
-            m_nNameBytes = std::strlen(entry_ptr->d_name);
+            auto name_bytes = std::strlen(entry_ptr->d_name);
             m_aName = entry_ptr->d_name;
             m_aName[m_nNameBytes + 0] = '/';
             m_aName[m_nNameBytes + 1] = '\0';
+            m_nNameBytes = name_bytes + 1;
             return true;
         }
 
