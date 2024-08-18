@@ -1,7 +1,52 @@
 #include <print>
 #include <cassert>
 #include <iostream>
-#include <ZxFS/ZxFS.h>
+#include <chrono>
+#include <filesystem>
+#include <ZxFS/Core.h>
+#include <ZxFS/Walker.h>
+
+
+// # Utils #
+namespace ZQF
+{
+    class ZxRecord
+    {
+    private:
+        std::chrono::steady_clock::time_point m_tpBeg;
+        std::chrono::steady_clock::time_point m_tpEnd;
+        std::vector<std::chrono::duration<double, std::milli>> m_vcRecord;
+
+    public:
+        auto Beg() -> void;
+        auto End() -> void;
+        auto Log() -> void;
+    };
+
+    auto ZxRecord::Beg() -> void
+    {
+        m_tpBeg = std::chrono::steady_clock::now();
+    }
+
+    auto ZxRecord::End() -> void
+    {
+        m_tpEnd = std::chrono::steady_clock::now();
+        m_vcRecord.emplace_back((m_tpEnd - m_tpBeg));
+    }
+
+    auto ZxRecord::Log() -> void
+    {
+        std::chrono::duration<double, std::milli> cout{};
+
+        for (auto& dur : m_vcRecord)
+        {
+            cout += dur;
+            std::println("{}", dur);
+        }
+
+        std::println("Avg:{}", cout / m_vcRecord.size());
+    }
+} // namespace ZQF
 
 
 static auto MyAssert(bool isStatus) -> void
@@ -17,6 +62,8 @@ auto main() -> int
 {
     try
     {
+        ZQF::ZxFS::DirContentDelete("C:/Users/Ptr/Desktop/qtdeclarative/");
+
         std::string_view path_0 = "dirx/asfas/r/weg/wfqwr/123.jpg";
         auto file_name_0 = ZQF::ZxFS::FileName(path_0);
         MyAssert(file_name_0 == "123.jpg");
@@ -90,7 +137,7 @@ auto main() -> int
         auto self_path_exist = ZQF::ZxFS::Exist(self_path_sv);
         MyAssert(self_path_exist == true);
 
-        ZQF::ZxFS::DirDelete("123x/",false);
+        ZQF::ZxFS::DirDelete("123x/", false);
         auto mkdir_status0 = ZQF::ZxFS::DirMake("123x/", false);
         MyAssert(mkdir_status0 == true);
         auto check_mkdir_status_0 = ZQF::ZxFS::Exist("123x/");
@@ -116,7 +163,7 @@ auto main() -> int
 
         ZQF::ZxFS::DirDelete("weufbuiwef/", true);
 
-        for (ZQF::ZxFS::Walk walk{ self_dir_sv }; walk.NextFile(); )
+        for (ZQF::ZxFS::Walker walk{ self_dir_sv }; walk.NextFile(); )
         {
             std::println("{}\n{}", walk.GetSearchDir(), walk.GetName());
         }

@@ -11,7 +11,9 @@ endif()
 
 # Set Source File Path
 list(APPEND "${PROJECT_NAME}_SRC_FILE" 
-    "src/ZxFS/ZxFS.cpp")
+    "src/ZxFS/Core.cpp"
+    "src/ZxFS/Walker.cpp"
+    "src/ZxFS/Platform.cpp")
 
 # Set Library
 add_library("${PROJECT_NAME}" "${${PROJECT_NAME}_SRC_FILE}")
