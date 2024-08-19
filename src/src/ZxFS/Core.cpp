@@ -1,7 +1,6 @@
 #include <ZxFS/Core.h>
 #include <ZxFS/Platform.h>
 #include <span>
-#include <cstring>
 
 
 namespace ZQF::ZxFS
@@ -53,12 +52,17 @@ namespace ZQF::ZxFS
 }
 
 #ifdef _WIN32
+
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <stack>
 
 
 namespace ZQF::ZxFS
 {
+    constexpr auto PATH_MAX_BYTES = 0x1000;
+
+
     auto SelfDir() -> std::pair<std::string_view, std::unique_ptr<char[]>>
     {
         std::size_t buffer_max_chars = MAX_PATH;
@@ -119,67 +123,107 @@ namespace ZQF::ZxFS
 
     auto FileSize(const std::string_view msPath) -> std::optional<std::uint64_t>
     {
-        WIN32_FIND_DATAW find_data;
-        const auto hfind = ::FindFirstFileW(Plat::PathUTF8ToWide(msPath).second.get(), &find_data);
-        if (hfind != INVALID_HANDLE_VALUE)
-        {
-            ::FindClose(hfind);
-        }
-        else
-        {
-            return std::nullopt;
-        }
+        WIN32_FILE_ATTRIBUTE_DATA find_data;
+        const auto status = ::GetFileAttributesExW(Plat::PathUTF8ToWide(msPath).second.get(), GetFileExInfoStandard, &find_data);
+        if (status == FALSE) { return std::nullopt; }
         const auto size_l = static_cast<std::uint64_t>(find_data.nFileSizeLow);
         const auto size_h = static_cast<std::uint64_t>(find_data.nFileSizeHigh);
         return static_cast<std::uint64_t>(size_l | (size_h << 32));
     }
 
-    static auto DirContentDeleteImp(const std::wstring_view wsPath) -> bool
+    static auto DirContentDeleteImp(const std::string_view msBasePath, const bool isRemoveBaseDir) -> bool
     {
-        if ((wsPath.size() + 1) >= MAX_PATH) { return false; }
+        std::stack<std::wstring> search_dir_stack;
+        search_dir_stack.push(L"*");
 
-        WCHAR path_buffer[MAX_PATH];
-        {
-            std::memcpy(path_buffer, wsPath.data(), wsPath.size() * sizeof(wchar_t));
-            path_buffer[wsPath.size() + 0] = L'*';
-            path_buffer[wsPath.size() + 1] = L'\0';
-        }
+        const auto path_cache{ std::make_unique_for_overwrite<wchar_t[]>(PATH_MAX_BYTES / sizeof(wchar_t)) };
 
-        WIN32_FIND_DATAW find_data;
-        const auto hfind = ::FindFirstFileExW(path_buffer, FindExInfoBasic, &find_data, FindExSearchNameMatch, NULL, 0);
-        if (hfind == INVALID_HANDLE_VALUE) { return false; }
+        const auto base_dir_chars{ Plat::PathUTF8ToWide(msBasePath, path_cache.get(), PATH_MAX_BYTES / sizeof(wchar_t)) };
+        if (base_dir_chars <= 0) { return false; }
+
+        wchar_t* cur_path_ptr{ path_cache.get() };
 
         do
         {
-            if ((*reinterpret_cast<std::uint32_t*>(find_data.cFileName)) == std::uint32_t(0x0000002E)) { continue; }
-            if (((*reinterpret_cast<std::uint64_t*>(find_data.cFileName)) & 0x000000FFFFFFFFFF) == std::uint64_t(0x00000000002E002E)) { continue; }
+            const auto search_dir_name{ std::move(search_dir_stack.top()) };
+            search_dir_stack.pop();
 
-            std::wstring_view item_name{ find_data.cFileName };
-            std::size_t item_path_size = wsPath.size() + item_name.size();
-            if ((item_path_size + 1) >= MAX_PATH) { return false; }
+            // do not remove base directory
+            if (search_dir_name.empty()) { break; }
 
-            std::memcpy(path_buffer + wsPath.size(), item_name.data(), (item_name.size() + 1) * sizeof(wchar_t));
+            // make current dir path.
+            std::memcpy(cur_path_ptr + base_dir_chars, search_dir_name.data(), search_dir_name.size() * sizeof(wchar_t));
+            const auto cur_path_chars = base_dir_chars + search_dir_name.size();
+            cur_path_ptr[cur_path_chars] = {};
 
-            if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) // dir
+            // remove the empty directory.
+            if (search_dir_name.ends_with(L'/'))
             {
-                path_buffer[item_path_size + 0] = L'/';
-                path_buffer[item_path_size + 1] = L'\0';
-                bool del_status = DirContentDeleteImp(std::wstring_view{ path_buffer, item_path_size + 1 });
-                if (del_status == false) { return false; }
-                ::RemoveDirectoryW(path_buffer);
+                ::RemoveDirectoryW(cur_path_ptr);
+                continue;
             }
-            else // file
+
+            WIN32_FIND_DATAW find_data;
+            const auto hfind{ ::FindFirstFileExW(cur_path_ptr, FindExInfoBasic, &find_data, FindExSearchNameMatch, NULL, 0) };
+            if (hfind == INVALID_HANDLE_VALUE){ return false; }
+
+            bool is_save_search_dir{ true };
+
+            do
             {
-                if (find_data.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
+                if ((*reinterpret_cast<std::uint32_t*>(find_data.cFileName)) == std::uint32_t(0x0000002E)) { continue; } // skip .
+                if (((*reinterpret_cast<std::uint64_t*>(find_data.cFileName)) & 0x000000FFFFFFFFFF) == std::uint64_t(0x00000000002E002E)) { continue; } // skip ..
+
+                const auto file_name_chars = ::wcslen(find_data.cFileName);
+
+                if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
                 {
-                    ::SetFileAttributesW(path_buffer, find_data.dwFileAttributes ^ FILE_ATTRIBUTE_READONLY);
+                    const std::wstring_view search_dir_name_sv{ search_dir_name.data(), search_dir_name.size() - 1 };
+
+                    if (is_save_search_dir)
+                    {
+                        is_save_search_dir = false;
+
+                        if (search_dir_name_sv.empty() == false)
+                        {
+                            search_dir_stack.push(std::move(std::wstring{ search_dir_name_sv }));
+                        }
+                    }
+
+                    find_data.cFileName[file_name_chars + 0] = L'/';
+                    find_data.cFileName[file_name_chars + 1] = L'*';
+                    search_dir_stack.push(std::move(std::wstring{ search_dir_name_sv }.append(find_data.cFileName, file_name_chars + 2)));
                 }
+                else
+                {
+                    // make file path
+                    std::memcpy(cur_path_ptr + cur_path_chars - 1, find_data.cFileName, file_name_chars * sizeof(wchar_t));
+                    cur_path_ptr[cur_path_chars - 1 + file_name_chars] = {};
 
-                ::DeleteFileW(path_buffer);
+                    // remove read-only attribute
+                    if (find_data.dwFileAttributes & FILE_ATTRIBUTE_READONLY) { ::SetFileAttributesW(cur_path_ptr, find_data.dwFileAttributes ^ FILE_ATTRIBUTE_READONLY); }
+
+                    ::DeleteFileW(cur_path_ptr);
+                }
+            } while (::FindNextFileW(hfind, &find_data));
+
+            ::FindClose(hfind);
+
+            // current directory is empyt now, so remove it.
+            if (is_save_search_dir == true)
+            {
+                cur_path_ptr[cur_path_chars - 1] = L'\0';
+                ::RemoveDirectoryW(cur_path_ptr);
             }
-        } while (::FindNextFileW(hfind, &find_data));
 
-        ::FindClose(hfind);
+        } while (!search_dir_stack.empty());
+
+
+        if (isRemoveBaseDir)
+        {
+            cur_path_ptr[base_dir_chars] = L'\0';
+            return ::RemoveDirectoryW(cur_path_ptr) != FALSE;
+        }
 
         return true;
     }
@@ -187,15 +231,15 @@ namespace ZQF::ZxFS
     auto DirContentDelete(const std::string_view msPath) -> bool
     {
         if (!msPath.ends_with('/')) { return false; }
-        return DirContentDeleteImp(Plat::PathUTF8ToWide(msPath).first);
+        return ZxFS::DirContentDeleteImp(msPath, false);
     }
 
     auto DirDelete(const std::string_view msPath, bool isRecursive) -> bool
     {
+        if (isRecursive) { return ZxFS::DirContentDeleteImp(msPath, true); }
+
         if (!msPath.ends_with('/')) { return false; }
-        const auto path_w = Plat::PathUTF8ToWide(msPath);
-        if (isRecursive) { DirContentDeleteImp(path_w.first); }
-        return ::RemoveDirectoryW(path_w.second.get()) != FALSE;
+        return ::RemoveDirectoryW(Plat::PathUTF8ToWide(msPath).second.get()) != FALSE;
     }
 
     auto DirMake(const std::string_view msPath, bool isRecursive) -> bool

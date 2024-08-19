@@ -165,7 +165,7 @@ auto main() -> int
 
         for (ZQF::ZxFS::Walker walk{ self_dir_sv }; walk.NextFile(); )
         {
-            std::println("{}\n{}", walk.GetSearchDir(), walk.GetName());
+            std::println("{}\n{}", walk.GetWalkDir(), walk.GetName());
         }
 
         auto dir_make_recursive_status = ZQF::ZxFS::DirMake("123/41245/215/125/1251/", true);

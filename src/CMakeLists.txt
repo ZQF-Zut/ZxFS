@@ -13,6 +13,7 @@ endif()
 list(APPEND "${PROJECT_NAME}_SRC_FILE" 
     "src/ZxFS/Core.cpp"
     "src/ZxFS/Walker.cpp"
+    "src/ZxFS/Searcher.cpp"
     "src/ZxFS/Platform.cpp")
 
 # Set Library
