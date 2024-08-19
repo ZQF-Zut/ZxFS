@@ -36,7 +36,6 @@ namespace ZQF::ZxFS
         if (isWithDir) { std::memcpy(file_path_u8_ptr, msBaseDir.data(), file_path_prefix_u8_bytes); }
 
         const auto file_path_u8_remain_bytes = PATH_MAX_BYTES - file_path_prefix_u8_bytes;
-        if (file_path_u8_remain_bytes < MAX_PATH) { return false; } // make sure there's enough space for filename
 
         do
         {
@@ -85,7 +84,6 @@ namespace ZQF::ZxFS
             const auto file_path_with_dir_u8_bytes = file_path_prefix_u8_bytes + search_dir_name_u8_bytes;
             const auto file_name_u8_ptr = file_path_u8_ptr + file_path_with_dir_u8_bytes;
             const auto file_path_u8_remain_bytes = PATH_MAX_BYTES - file_path_with_dir_u8_bytes;
-            if (file_path_u8_remain_bytes < MAX_PATH) { return false; } // make sure there's enough space for filename
 
             do
             {
