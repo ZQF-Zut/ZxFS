@@ -139,7 +139,7 @@ namespace ZQF::ZxFS
         const auto path_cache{ std::make_unique_for_overwrite<wchar_t[]>(PATH_MAX_BYTES / sizeof(wchar_t)) };
 
         const auto base_dir_chars{ Plat::PathUTF8ToWide(msBasePath, path_cache.get(), PATH_MAX_BYTES / sizeof(wchar_t)) };
-        if (base_dir_chars <= 0) { return false; }
+        if (base_dir_chars == 0) { return false; }
 
         wchar_t* cur_path_ptr{ path_cache.get() };
 

@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <ZxFS/Core.h>
 #include <ZxFS/Walker.h>
+#include <ZxFS/Searcher.h>
 
 
 // # Utils #
@@ -62,6 +63,11 @@ auto main() -> int
 {
     try
     {
+        const auto file_list = ZQF::ZxFS::Searcher::GetFilePaths("C:/Users/Ptr/Desktop/qtdeclarative/", true, true);
+        for (auto& path : file_list) { ZQF::ZxFS::FileDelete(path); }
+        const auto file_list_2 = ZQF::ZxFS::Searcher::GetFilePaths("C:/Users/Ptr/Desktop/qtdeclarative/", true, true);
+        MyAssert(file_list_2.empty());
+
         ZQF::ZxFS::DirContentDelete("C:/Users/Ptr/Desktop/qtdeclarative/");
 
         std::string_view path_0 = "dirx/asfas/r/weg/wfqwr/123.jpg";

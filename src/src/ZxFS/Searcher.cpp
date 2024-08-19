@@ -17,31 +17,26 @@ namespace ZQF::ZxFS
 {
     constexpr auto PATH_MAX_BYTES = 0x1000;
 
-    static auto GetFilePathsCurDir(std::vector<std::string>& vcPaths, const std::string_view msSearchDir, const bool isWithDir) -> bool
+    static auto GetFilePathsCurDir(std::vector<std::string>& vcPaths, const std::string_view msBaseDir, const bool isWithDir) -> bool
     {
         const auto u8path_cache = std::make_unique_for_overwrite<char[]>(PATH_MAX_BYTES);
 
-        wchar_t* walk_dir_buffer = reinterpret_cast<wchar_t*>(u8path_cache.get());
-        const auto walk_dir_chars = Plat::PathUTF8ToWide(msSearchDir, walk_dir_buffer, PATH_MAX_BYTES / sizeof(wchar_t));
-        walk_dir_buffer[walk_dir_chars + 0] = L'*';
-        walk_dir_buffer[walk_dir_chars + 1] = L'\0';
+        wchar_t* base_dir_ptr = reinterpret_cast<wchar_t*>(u8path_cache.get());
+        const auto base_dir_chars = Plat::PathUTF8ToWide(msBaseDir, base_dir_ptr, PATH_MAX_BYTES / sizeof(wchar_t));
+        if (base_dir_chars == 0) { return false; }
+        base_dir_ptr[base_dir_chars + 0] = L'*';
+        base_dir_ptr[base_dir_chars + 1] = L'\0';
 
         WIN32_FIND_DATAW find_data;
-        const auto hfind = ::FindFirstFileExW(walk_dir_buffer, FindExInfoBasic, &find_data, FindExSearchNameMatch, NULL, 0);
+        const auto hfind = ::FindFirstFileExW(base_dir_ptr, FindExInfoBasic, &find_data, FindExSearchNameMatch, NULL, 0);
         if (hfind == INVALID_HANDLE_VALUE) { return false; }
 
+        char* file_path_u8_ptr = u8path_cache.get();
+        const auto file_path_prefix_u8_bytes{ isWithDir ? (msBaseDir.size() * sizeof(char)) : 0 };
+        if (isWithDir) { std::memcpy(file_path_u8_ptr, msBaseDir.data(), file_path_prefix_u8_bytes); }
 
-        std::size_t paths_prefix_bytes{};
-        if (isWithDir)
-        {
-            paths_prefix_bytes = msSearchDir.size() * sizeof(char);
-            std::memcpy(u8path_cache.get(), msSearchDir.data(), paths_prefix_bytes);
-        }
-        else
-        {
-            paths_prefix_bytes = 0;
-            u8path_cache[0] = {};
-        }
+        const auto file_path_u8_remain_bytes = PATH_MAX_BYTES - file_path_prefix_u8_bytes;
+        if (file_path_u8_remain_bytes < MAX_PATH) { return false; } // make sure there's enough space for filename
 
         do
         {
@@ -50,68 +45,72 @@ namespace ZQF::ZxFS
 
             if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
             {
-                const auto file_name_u8_bytes = Plat::PathWideToUTF8(find_data.cFileName, u8path_cache.get() + paths_prefix_bytes, PATH_MAX_BYTES - paths_prefix_bytes);
-                const auto file_path_u8_bytes = paths_prefix_bytes + file_name_u8_bytes;
-                vcPaths.emplace_back(std::string_view{ u8path_cache.get(), file_path_u8_bytes });
+                const auto file_name_u8_bytes = Plat::PathWideToUTF8(find_data.cFileName, file_path_u8_ptr + file_path_prefix_u8_bytes, file_path_u8_remain_bytes);
+                const auto file_path_u8_bytes = file_path_prefix_u8_bytes + file_name_u8_bytes;
+                vcPaths.emplace_back(std::string{ file_path_u8_ptr, file_path_u8_bytes });
             }
         } while (::FindNextFileW(hfind, &find_data));
 
         return true;
     }
 
-    static auto GetFilePathsRecursive(std::vector<std::string>& vcPaths, const std::string_view msSearchDir, const bool isWithDir) -> bool
+    static auto GetFilePathsRecursive(std::vector<std::string>& vcPaths, const std::string_view msBaseDir, const bool isWithDir) -> bool
     {
-        std::stack<std::wstring> dir_stack;
-        dir_stack.push(L"*");
+        std::stack<std::wstring> search_dir_stack;
+        search_dir_stack.push(L"*");
 
-        const auto u8paths_cache = std::make_unique_for_overwrite<char[]>(PATH_MAX_BYTES);
-        std::size_t paths_prefix_bytes{};
-        if (isWithDir)
-        {
-            paths_prefix_bytes = msSearchDir.size() * sizeof(char);
-            std::memcpy(u8paths_cache.get(), msSearchDir.data(), paths_prefix_bytes);
-        }
-        else
-        {
-            paths_prefix_bytes = 0;
-            u8paths_cache[0] = {};
-        }
+        const auto file_path_u8_cache = std::make_unique_for_overwrite<char[]>(PATH_MAX_BYTES);
+        char* file_path_u8_ptr = file_path_u8_cache.get();
+        const auto file_path_prefix_u8_bytes{ isWithDir ? (msBaseDir.size() * sizeof(char)) : 0};
+        if (isWithDir) { std::memcpy(file_path_u8_ptr, msBaseDir.data(), file_path_prefix_u8_bytes); }
 
-        const auto cur_dir_u16_cache = std::make_unique_for_overwrite<wchar_t[]>(PATH_MAX_BYTES / sizeof(wchar_t));
-        wchar_t* cur_dir_path_u16_buffer = cur_dir_u16_cache.get();
-        const auto cur_dir_path_u16_chars = Plat::PathUTF8ToWide(msSearchDir, cur_dir_path_u16_buffer, PATH_MAX_BYTES / sizeof(wchar_t));
-        while (!dir_stack.empty())
+        const auto cur_dir_cache = std::make_unique_for_overwrite<wchar_t[]>(PATH_MAX_BYTES / sizeof(wchar_t));
+        wchar_t* cur_dir_ptr = cur_dir_cache.get();
+        const auto base_dir_chars = Plat::PathUTF8ToWide(msBaseDir, cur_dir_ptr, PATH_MAX_BYTES / sizeof(wchar_t));
+        if (base_dir_chars == 0) { return false; }
+
+        do
         {
-            const auto cur_dir_name{ std::move(dir_stack.top()) }; dir_stack.pop();
-            std::memcpy(cur_dir_path_u16_buffer + cur_dir_path_u16_chars, cur_dir_name.data(), (cur_dir_name.size() + 1) * sizeof(wchar_t));
+            const auto search_dir_name{ std::move(search_dir_stack.top()) }; search_dir_stack.pop();
+            std::memcpy(cur_dir_ptr + base_dir_chars, search_dir_name.data(), search_dir_name.size() * sizeof(wchar_t));
+            cur_dir_ptr[base_dir_chars + search_dir_name.size()] = L'\0';
 
             WIN32_FIND_DATAW find_data;
-            const auto hfind = ::FindFirstFileExW(cur_dir_path_u16_buffer, FindExInfoBasic, &find_data, FindExSearchNameMatch, NULL, 0);
+            const auto hfind = ::FindFirstFileExW(cur_dir_ptr, FindExInfoBasic, &find_data, FindExSearchNameMatch, NULL, 0);
             if (hfind == INVALID_HANDLE_VALUE) { return false; }
 
-            const auto cur_dir_name_u8_bytes = Plat::PathWideToUTF8(cur_dir_name.data(), u8paths_cache.get() + paths_prefix_bytes, PATH_MAX_BYTES - paths_prefix_bytes) - 1;
+            const auto search_dir_name_u8_ptr = file_path_u8_ptr + file_path_prefix_u8_bytes;
+            const auto search_dir_name_u8_bytes = Plat::PathWideToUTF8({ search_dir_name.data() ,search_dir_name.size() - 1 }, search_dir_name_u8_ptr, PATH_MAX_BYTES - file_path_prefix_u8_bytes);
+
+            const auto file_path_with_dir_u8_bytes = file_path_prefix_u8_bytes + search_dir_name_u8_bytes;
+            const auto file_name_u8_ptr = file_path_u8_ptr + file_path_with_dir_u8_bytes;
+            const auto file_path_u8_remain_bytes = PATH_MAX_BYTES - file_path_with_dir_u8_bytes;
+            if (file_path_u8_remain_bytes < MAX_PATH) { return false; } // make sure there's enough space for filename
 
             do
             {
                 if ((*reinterpret_cast<std::uint32_t*>(find_data.cFileName)) == std::uint32_t(0x0000002E)) { continue; } // skip .
                 if (((*reinterpret_cast<std::uint64_t*>(find_data.cFileName)) & 0x000000FFFFFFFFFF) == std::uint64_t(0x00000000002E002E)) { continue; } // skip ..
 
-                if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                const auto file_name_chars = ::wcslen(find_data.cFileName);
+
+                if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
                 {
-                    const auto file_name_u8_bytes = Plat::PathWideToUTF8(find_data.cFileName, u8paths_cache.get() + paths_prefix_bytes + cur_dir_name_u8_bytes, PATH_MAX_BYTES - paths_prefix_bytes - cur_dir_name_u8_bytes);
-                    const auto file_path_u8_bytes = paths_prefix_bytes + cur_dir_name_u8_bytes + file_name_u8_bytes;
-                    vcPaths.emplace_back(std::string_view{ u8paths_cache.get(), file_path_u8_bytes });
+                    find_data.cFileName[file_name_chars + 0] = L'/';
+                    find_data.cFileName[file_name_chars + 1] = L'*'; // might override WIN32_FIND_DATAW::cAlternateFileName, but we never use it, so that's safe.
+                    search_dir_stack.push(std::move(std::wstring{ search_dir_name.data(), search_dir_name.size() - 1 }.append(find_data.cFileName, file_name_chars + 2)));
                 }
                 else
                 {
-                    std::wstring next_dir{ cur_dir_name.data(), cur_dir_name.size() - 1 };
-                    next_dir.append(find_data.cFileName).append(L"/*", 2);
-                    dir_stack.push(std::move(next_dir));
+                    const auto file_name_u8_bytes = Plat::PathWideToUTF8({ find_data.cFileName, file_name_chars }, file_name_u8_ptr, file_path_u8_remain_bytes);
+                    const auto file_path_u8_bytes = file_path_with_dir_u8_bytes + file_name_u8_bytes;
+                    vcPaths.emplace_back(std::string{ file_path_u8_ptr, file_path_u8_bytes });
                 }
             } while (::FindNextFileW(hfind, &find_data));
 
             ::FindClose(hfind);
-        }
+
+        } while (!search_dir_stack.empty());
 
         return true;
     }
