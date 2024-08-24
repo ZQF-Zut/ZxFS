@@ -1,7 +1,6 @@
 #include <ZxFS/Walker.h>
 #include <ZxFS/Core.h>
 #include <ZxFS/Platform.h>
-#include <format>
 #include <stdexcept>
 
 
@@ -17,7 +16,7 @@ namespace ZQF::ZxFS
 
     Walker::Walker(const std::string_view msWalkDir)
     {
-        if (!msWalkDir.ends_with('/')) { throw std::runtime_error(std::format("ZxPath::Walk.Walk(): walk dir format error! -> \'{}\'", msWalkDir)); }
+        if (!msWalkDir.ends_with('/')) { throw std::runtime_error(std::string{ "ZxPath::Walk.Walk(): walk dir format error! -> " }.append(msWalkDir)); }
 
         m_upCache = std::make_unique_for_overwrite<char[]>(PATH_MAX_BYTES);
 
@@ -28,7 +27,7 @@ namespace ZQF::ZxFS
 
         WIN32_FIND_DATAW find_data;
         const auto hfind = ::FindFirstFileExW(wide_path, FindExInfoBasic, &find_data, FindExSearchNameMatch, nullptr, 0);
-        if (hfind == INVALID_HANDLE_VALUE) { throw std::runtime_error(std::format("ZxPath::Walk.Walk(): walk dir open error! -> \'{}\'", msWalkDir)); }
+        if (hfind == INVALID_HANDLE_VALUE) { throw std::runtime_error(std::string{ "ZxPath::Walk.Walk(): walk dir open error! -> " }.append(msWalkDir)); }
         m_hFind = reinterpret_cast<std::uintptr_t>(hfind);
 
         std::memcpy(m_upCache.get(), msWalkDir.data(), msWalkDir.size() * sizeof(char));
@@ -114,10 +113,10 @@ namespace ZQF::ZxFS
 {
     Walker::Walker(const std::string_view msWalkDir)
     {
-        if (!msWalkDir.ends_with('/')) { throw std::runtime_error(std::format("ZxPath::Walk : dir format error! -> \'{}\'", msWalkDir)); }
+        if (!msWalkDir.ends_with('/')) { throw std::runtime_error(std::string{ "ZxPath::Walk : dir format error! -> " }.append(msWalkDir)); }
 
         const auto dir_ptr = ::opendir(msWalkDir.data());
-        if (dir_ptr == nullptr) { throw std::runtime_error(std::format("ZxPath::Walk : dir open error! -> \'{}\'", msWalkDir)); }
+        if (dir_ptr == nullptr) { throw std::runtime_error(std::string{ "ZxPath::Walk : dir open error! -> " }.append(msWalkDir)); }
         m_hFind = reinterpret_cast<std::uintptr_t>(dir_ptr);
 
         const auto walk_dir_bytes = msWalkDir.size() * sizeof(char);
