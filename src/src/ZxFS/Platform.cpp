@@ -2,7 +2,6 @@
 
 
 #ifdef _WIN32
-
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
@@ -40,5 +39,16 @@ namespace ZQF::ZxFS::Plat
         return bytes;
     }
 }
+#elif __linux__
+#include <unistd.h>
 
+
+namespace ZQF::ZxFS::Plat
+{
+    auto PathMaxBytes() -> std::size_t
+    {
+        const auto path_max_byte_ret{ ::pathconf("/", _PC_PATH_MAX) };
+        return static_cast<std::size_t>(path_max_byte_ret == -1 ? PATH_MAX : path_max_byte_ret);
+    }
+}
 #endif

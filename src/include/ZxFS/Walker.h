@@ -10,11 +10,7 @@ namespace ZQF::ZxFS
     {
     private:
         std::uintptr_t m_hFind{};
-#ifdef _WIN32
         std::unique_ptr<char[]> m_upCache{};
-#elif __linux__
-        char* m_aName{};
-#endif
         std::size_t m_nNameBytes{};
         std::size_t m_nWalkDirBytes{};
 

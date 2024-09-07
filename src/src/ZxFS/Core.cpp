@@ -284,26 +284,21 @@ namespace ZQF::ZxFS
 #include <fcntl.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <cstring>
 
 
 namespace ZQF::ZxFS
 {
-    static auto GetPathMaxBytes() -> ssize_t
-    {
-        auto path_max_byte_ret = ::pathconf(".", _PC_PATH_MAX);
-        return static_cast<ssize_t>(path_max_byte_ret == -1 ? PATH_MAX : path_max_byte_ret);
-    }
-
     auto SelfDir() -> std::pair<std::string_view, std::unique_ptr<char[]>>
     {
-        ssize_t path_max_byte = ZxFS::GetPathMaxBytes();
+        auto path_max_byte{ Plat::PathMaxBytes() };
 
         do
         {
             auto buffer = std::make_unique_for_overwrite<char[]>(path_max_byte);
-            const auto write_bytes = readlink("/proc/self/cwd", buffer.get(), path_max_byte);
+            const auto write_bytes = ::readlink("/proc/self/cwd", buffer.get(), path_max_byte);
             if (write_bytes == -1) { break; }
-            if (write_bytes != path_max_byte)
+            if (static_cast<std::size_t>(write_bytes) != path_max_byte)
             {
                 buffer[write_bytes + 0] = '/';
                 buffer[write_bytes + 1] = {};
@@ -317,14 +312,14 @@ namespace ZQF::ZxFS
 
     auto SelfPath() -> std::pair<std::string_view, std::unique_ptr<char[]>>
     {
-        ssize_t path_max_byte = ZxFS::GetPathMaxBytes();
+        auto path_max_byte{ Plat::PathMaxBytes() };
 
         do
         {
             auto buffer = std::make_unique_for_overwrite<char[]>(path_max_byte);
-            const auto write_bytes = readlink("/proc/self/exe", buffer.get(), path_max_byte);
+            const auto write_bytes = ::readlink("/proc/self/exe", buffer.get(), path_max_byte);
             if (write_bytes == -1) { break; }
-            if (write_bytes != path_max_byte)
+            if (static_cast<std::size_t>(write_bytes) != path_max_byte)
             {
                 buffer[write_bytes] = {};
                 return { { buffer.get(), static_cast<std::size_t>(write_bytes) }, std::move(buffer) };
@@ -361,7 +356,7 @@ namespace ZQF::ZxFS
         }
 
         struct stat st;
-        const auto fstat_status = fstat(fd_exist, &st);
+        const auto fstat_status = ::fstat(fd_exist, &st);
         if (fstat_status == -1)
         {
             ::close(fd_exist);
@@ -386,15 +381,15 @@ namespace ZQF::ZxFS
     auto FileSize(const std::string_view msPath) -> std::optional<std::uint64_t>
     {
         struct stat st;
-        const auto status = stat(msPath.data(), &st);
+        const auto status = ::stat(msPath.data(), &st);
         return (status != -1) ? std::optional{ static_cast<std::uint16_t>(st.st_size) } : std::nullopt;
     }
 
-    static auto DirContentDeleteImp(const std::string_view msPath, const ssize_t nPathMaxBytes) -> bool
+    static auto DirContentDeleteImp(const std::string_view msPath, const std::size_t nPathMaxBytes) -> bool
     {
-        if (msPath.size() >= static_cast<std::size_t>(nPathMaxBytes)) { return false; }
+        if (msPath.size() >= nPathMaxBytes) { return false; }
 
-        auto path_buffer = std::make_unique_for_overwrite<char[]>(static_cast<std::size_t>(nPathMaxBytes));
+        auto path_buffer = std::make_unique_for_overwrite<char[]>(nPathMaxBytes);
         {
             std::memcpy(path_buffer.get(), msPath.data(), msPath.size() * sizeof(char));
             path_buffer[msPath.size()] = '\0';
@@ -410,8 +405,8 @@ namespace ZQF::ZxFS
 
             const std::string_view name{ entry_ptr->d_name };
             const auto path_bytes = msPath.size() + name.size();
-            if ((path_bytes + 1) >= static_cast<std::size_t>(nPathMaxBytes)) { return false; }
-            ::memcpy(path_buffer.get() + msPath.size(), name.data(), name.size());
+            if ((path_bytes + 1) >= nPathMaxBytes) { return false; }
+            std::memcpy(path_buffer.get() + msPath.size(), name.data(), name.size());
             if (entry_ptr->d_type == DT_DIR)
             {
                 path_buffer[path_bytes + 0] = '/';
@@ -433,13 +428,13 @@ namespace ZQF::ZxFS
     auto DirContentDelete(const std::string_view msPath) -> bool
     {
         if (!msPath.ends_with('/')) { return false; }
-        return DirContentDeleteImp(msPath, ZxFS::GetPathMaxBytes());
+        return ZxFS::DirContentDeleteImp(msPath, Plat::PathMaxBytes());
     }
 
     auto DirDelete(const std::string_view msPath, bool isRecursive) -> bool
     {
         if (!msPath.ends_with('/')) { return false; }
-        if (isRecursive) { DirContentDeleteImp(msPath, ZxFS::GetPathMaxBytes()); }
+        if (isRecursive) { ZxFS::DirContentDeleteImp(msPath, Plat::PathMaxBytes()); }
         return ::rmdir(msPath.data()) != -1;
     }
 
@@ -453,7 +448,7 @@ namespace ZQF::ZxFS
         }
         else
         {
-            auto path_buffer = std::make_unique_for_overwrite<char[]>(msPath.size() + 1);
+            const auto path_buffer{ std::make_unique_for_overwrite<char[]>(msPath.size() + 1) };
             std::memcpy(path_buffer.get(), msPath.data(), msPath.size() * sizeof(char));
             path_buffer[msPath.size()] = {};
 

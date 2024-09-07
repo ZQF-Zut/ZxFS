@@ -63,8 +63,9 @@ auto main() -> int
 {
     try
     {
-        const auto file_list = ZQF::ZxFS::Searcher::GetFilePaths("C:/Users/Ptr/Desktop/qtdeclarative/", true, true);
-        for (auto& path : file_list) { ZQF::ZxFS::FileDelete(path); }
+        const auto file_list = ZQF::ZxFS::Searcher::GetFilePaths("/home/linuxdev/.vs/", false, true);
+
+        // for (auto& path : file_list) { ZQF::ZxFS::FileDelete(path); }
         const auto file_list_2 = ZQF::ZxFS::Searcher::GetFilePaths("C:/Users/Ptr/Desktop/qtdeclarative/", true, true);
         MyAssert(file_list_2.empty());
 

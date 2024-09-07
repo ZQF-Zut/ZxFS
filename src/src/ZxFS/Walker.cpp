@@ -16,7 +16,7 @@ namespace ZQF::ZxFS
 
     Walker::Walker(const std::string_view msWalkDir)
     {
-        if (!msWalkDir.ends_with('/')) { throw std::runtime_error(std::string{ "ZxPath::Walk.Walk(): walk dir format error! -> " }.append(msWalkDir)); }
+        if (!msWalkDir.ends_with('/')) { throw std::runtime_error(std::string{ "ZxPath::Walk::Walk(): walk dir format error! -> " }.append(msWalkDir)); }
 
         m_upCache = std::make_unique_for_overwrite<char[]>(PATH_MAX_BYTES);
 
@@ -27,7 +27,7 @@ namespace ZQF::ZxFS
 
         WIN32_FIND_DATAW find_data;
         const auto hfind = ::FindFirstFileExW(wide_path, FindExInfoBasic, &find_data, FindExSearchNameMatch, nullptr, 0);
-        if (hfind == INVALID_HANDLE_VALUE) { throw std::runtime_error(std::string{ "ZxPath::Walk.Walk(): walk dir open error! -> " }.append(msWalkDir)); }
+        if (hfind == INVALID_HANDLE_VALUE) { throw std::runtime_error(std::string{ "ZxPath::Walk::Walk(): walk dir open error! -> " }.append(msWalkDir)); }
         m_hFind = reinterpret_cast<std::uintptr_t>(hfind);
 
         std::memcpy(m_upCache.get(), msWalkDir.data(), msWalkDir.size() * sizeof(char));
@@ -79,7 +79,79 @@ namespace ZQF::ZxFS
 
         return false;
     }
+}
 
+#elif __linux__
+
+#include <unistd.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <cstring>
+
+
+namespace ZQF::ZxFS
+{
+    Walker::Walker(const std::string_view msWalkDir)
+    {
+        if (!msWalkDir.ends_with('/')) { throw std::runtime_error(std::string{ "ZxPath::Walker::Walker: walk dir format error! -> " }.append(msWalkDir)); }
+
+        const auto dir_ptr = ::opendir(msWalkDir.data());
+        if (dir_ptr == nullptr) { throw std::runtime_error(std::string{ "ZxPath::Walker::Walker: walk dir open error! -> " }.append(msWalkDir)); }
+        m_hFind = reinterpret_cast<std::uintptr_t>(dir_ptr);
+
+        const auto path_max_byte = ::pathconf(".", _PC_PATH_MAX);
+        m_upCache = std::make_unique_for_overwrite<char[]>(path_max_byte == -1 ? 1024 : path_max_byte);
+        m_nWalkDirBytes = msWalkDir.size() * sizeof(char);
+        std::memcpy(m_upCache.get(), msWalkDir.data(), m_nWalkDirBytes);
+        m_upCache[m_nWalkDirBytes] = '\0';
+    }
+
+    Walker::~Walker()
+    {
+        ::closedir(reinterpret_cast<DIR*>(m_hFind));
+    }
+
+    auto Walker::NextDir() -> bool
+    {
+        while (const auto entry_ptr = ::readdir(reinterpret_cast<DIR*>(m_hFind)))
+        {
+            if ((*reinterpret_cast<std::uint16_t*>(entry_ptr->d_name)) == std::uint32_t(0x002E)) { continue; }
+            if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }
+            if (entry_ptr->d_type != DT_DIR) { continue; }
+
+            const auto name_bytes = std::strlen(entry_ptr->d_name);
+            std::memcpy(m_upCache.get() + m_nWalkDirBytes, entry_ptr->d_name, name_bytes);
+            m_upCache[m_nWalkDirBytes + m_nNameBytes + 0] = '/';
+            m_upCache[m_nWalkDirBytes + m_nNameBytes + 1] = '\0';
+            m_nNameBytes = name_bytes + 1;
+            return true;
+        }
+
+        return false;
+    }
+
+    auto Walker::NextFile() -> bool
+    {
+        while (const auto entry_ptr = ::readdir(reinterpret_cast<DIR*>(m_hFind)))
+        {
+            if ((*reinterpret_cast<std::uint16_t*>(entry_ptr->d_name)) == std::uint32_t(0x002E)) { continue; }
+            if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }
+            if (entry_ptr->d_type != DT_REG) { continue; }
+
+            m_nNameBytes = std::strlen(entry_ptr->d_name);
+            std::memcpy(m_upCache.get() + m_nWalkDirBytes, entry_ptr->d_name, m_nNameBytes);
+            return true;
+        }
+
+        return false;
+    }
+}
+
+#endif
+
+namespace ZQF::ZxFS
+{
     auto Walker::GetName() const -> std::string_view
     {
         return { m_upCache.get() + m_nWalkDirBytes, m_nNameBytes };
@@ -100,76 +172,3 @@ namespace ZQF::ZxFS
         return ZxFS::FileSuffix(this->GetName()) == msSuffix ? true : false;
     }
 }
-
-#elif __linux__
-
-#include <unistd.h>
-#include <fcntl.h>
-#include <dirent.h>
-#include <sys/stat.h>
-
-
-namespace ZQF::ZxFS
-{
-    Walker::Walker(const std::string_view msWalkDir)
-    {
-        if (!msWalkDir.ends_with('/')) { throw std::runtime_error(std::string{ "ZxPath::Walk : dir format error! -> " }.append(msWalkDir)); }
-
-        const auto dir_ptr = ::opendir(msWalkDir.data());
-        if (dir_ptr == nullptr) { throw std::runtime_error(std::string{ "ZxPath::Walk : dir open error! -> " }.append(msWalkDir)); }
-        m_hFind = reinterpret_cast<std::uintptr_t>(dir_ptr);
-
-        const auto walk_dir_bytes = msWalkDir.size() * sizeof(char);
-        m_upSearchDir = std::make_unique_for_overwrite<char[]>(walk_dir_bytes + 1);
-        std::memcpy(m_upSearchDir.get(), msWalkDir.data(), walk_dir_bytes);
-        m_nSearchDirBytes = walk_dir_bytes;
-        m_upSearchDir[m_nSearchDirBytes] = '\0';
-    }
-
-    Walker::~Walker()
-    {
-        ::closedir(reinterpret_cast<DIR*>(m_hFind));
-    }
-
-    auto Walker::NextDir() -> bool
-    {
-        while (const auto entry_ptr = ::readdir(reinterpret_cast<DIR*>(m_hFind)))
-        {
-            if ((*reinterpret_cast<std::uint16_t*>(entry_ptr->d_name)) == std::uint32_t(0x002E)) { continue; }
-            if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }
-            if (entry_ptr->d_type != DT_DIR) { continue; }
-
-            auto name_bytes = std::strlen(entry_ptr->d_name);
-            m_aName = entry_ptr->d_name;
-            m_aName[m_nNameBytes + 0] = '/';
-            m_aName[m_nNameBytes + 1] = '\0';
-            m_nNameBytes = name_bytes + 1;
-            return true;
-        }
-
-        return false;
-    }
-
-    auto Walker::NextFile() -> bool
-    {
-        while (const auto entry_ptr = ::readdir(reinterpret_cast<DIR*>(m_hFind)))
-        {
-            if ((*reinterpret_cast<std::uint16_t*>(entry_ptr->d_name)) == std::uint32_t(0x002E)) { continue; }
-            if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }
-            if (entry_ptr->d_type != DT_REG) { continue; }
-
-            m_nNameBytes = std::strlen(entry_ptr->d_name);
-            m_aName = entry_ptr->d_name;
-            return true;
-        }
-
-        return false;
-    }
-
-    auto Walker::GetName() const -> std::string_view
-    {
-        return { m_aName, m_nNameBytes };
-    }
-}
-
-#endif

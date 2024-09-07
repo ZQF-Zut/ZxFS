@@ -6,7 +6,6 @@
 
 
 #ifdef _WIN32
-
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
@@ -126,5 +125,119 @@ namespace ZQF::ZxFS
     }
 }
 #elif __linux__
+#include <dirent.h>
+#include <cstring>
+
+namespace ZQF::ZxFS
+{
+    static auto GetFilePathsCurDir(std::vector<std::string>& vcPaths, const std::string_view msBaseDir, const bool isWithDir) -> bool
+    {
+        const auto dir_ptr{ ::opendir(msBaseDir.data()) };
+        if (dir_ptr == nullptr) { return false; }
+
+        auto entry_ptr{ ::readdir(dir_ptr) };
+        if (entry_ptr == nullptr) { return false; }
+
+        if (isWithDir)
+        {
+            const auto path_max_bytes{ Plat::PathMaxBytes() };
+            const auto path_cache{ std::make_unique_for_overwrite<char[]>(path_max_bytes) };
+            auto file_path_ptr{ path_cache.get() };
+
+            std::memcpy(file_path_ptr, msBaseDir.data(), msBaseDir.size());
+
+            do
+            {
+                if ((*reinterpret_cast<std::uint16_t*>(entry_ptr->d_name)) == std::uint32_t(0x002E)) { continue; }// skip .
+                if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }// skip ..
+                if (entry_ptr->d_type != DT_REG) { continue; }
+
+                const auto file_name_bytes{ std::strlen(entry_ptr->d_name) };
+                std::memcpy(file_path_ptr + msBaseDir.size(), entry_ptr->d_name, file_name_bytes);
+                const auto file_path_bytes{ msBaseDir.size() + file_name_bytes };
+                vcPaths.emplace_back(file_path_ptr, file_path_bytes);
+            } while ((entry_ptr = ::readdir(dir_ptr)) != nullptr);
+        }
+        else
+        {
+            do
+            {
+                if ((*reinterpret_cast<std::uint16_t*>(entry_ptr->d_name)) == std::uint32_t(0x002E)) { continue; }// skip .
+                if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }// skip ..
+                if (entry_ptr->d_type != DT_REG) { continue; }
+                vcPaths.emplace_back(entry_ptr->d_name);
+            } while ((entry_ptr = ::readdir(dir_ptr)) != nullptr);
+        }
+
+        const auto status{ ::closedir(dir_ptr) };
+        return status != (-1) ? true : false;
+    }
+
+    static auto GetFilePathsRecursive(std::vector<std::string>& vcPaths, const std::string_view msBaseDir, const bool isWithDir) -> bool
+    {
+        std::stack<std::string> search_dir_stack;
+        search_dir_stack.push("");
+
+        const auto path_max_bytes{ Plat::PathMaxBytes() };
+        const auto file_path_cache{ std::make_unique_for_overwrite<char[]>(path_max_bytes) };
+        std::memcpy(file_path_cache.get(), msBaseDir.data(), msBaseDir.size() * sizeof(char));
+
+        const auto search_dir_path_ptr{ file_path_cache.get() };
+
+        const auto file_path_ptr{ isWithDir ? search_dir_path_ptr : search_dir_path_ptr + msBaseDir.size() };
+        const auto file_path_prefix_bytes{ isWithDir ? msBaseDir.size() : 0 };
+
+        do
+        {
+            const auto search_dir_name{ std::move(search_dir_stack.top()) }; search_dir_stack.pop();
+
+            std::memcpy(search_dir_path_ptr + msBaseDir.size(), search_dir_name.data(), search_dir_name.size() * sizeof(char));
+            search_dir_path_ptr[msBaseDir.size() + search_dir_name.size()] = {};
+
+            const auto dir_ptr{ ::opendir(search_dir_path_ptr) };
+            if (dir_ptr == nullptr) { return false; }
+
+            auto entry_ptr{ ::readdir(dir_ptr) };
+            if (entry_ptr == nullptr) { return false; }
+
+            do
+            {
+                if ((*reinterpret_cast<std::uint16_t*>(entry_ptr->d_name)) == std::uint32_t(0x002E)) { continue; }// skip .
+                if (((*reinterpret_cast<std::uint32_t*>(entry_ptr->d_name)) & 0x00FFFFFF) == std::uint32_t(0x00002E2E)) { continue; }// skip ..
+
+                if (entry_ptr->d_type == DT_DIR)
+                {
+                    const auto dir_name_bytes{ std::strlen(entry_ptr->d_name) };
+                    entry_ptr->d_name[dir_name_bytes] = '/';
+                    search_dir_stack.push(std::move(std::string{ search_dir_name.data(), search_dir_name.size() }.append(entry_ptr->d_name, dir_name_bytes + 1)));
+                }
+                else
+                {
+                    vcPaths.push_back(std::move(std::string{ file_path_ptr, file_path_prefix_bytes + search_dir_name.size() }.append(entry_ptr->d_name)));
+                }
+            } while ((entry_ptr = ::readdir(dir_ptr)) != nullptr);
+
+            const auto status{ ::closedir(dir_ptr) };
+            if (status == -1) { return false; }
+
+        } while (!search_dir_stack.empty());
+
+        return true;
+    }
+
+    auto Searcher::GetFilePaths(const std::string_view msSearchDir, const bool isWithDir, const bool isRecursive) -> std::vector<std::string>
+    {
+        std::vector<std::string> file_path_list;
+        const auto status = Searcher::GetFilePaths(file_path_list, msSearchDir, isWithDir, isRecursive);
+        if (status == false) { throw std::runtime_error(std::string{ "ZxPath::Walk::GetFilePaths(): dir open error! -> " }.append(msSearchDir)); }
+        return file_path_list;
+    }
+
+    auto Searcher::GetFilePaths(std::vector<std::string>& vcPaths, const std::string_view msSearchDir, const bool isWithDir, const bool isRecursive) -> bool
+    {
+        if (!msSearchDir.ends_with('/')) { throw std::runtime_error(std::string{ "ZxPath::Walk::GetFilePaths(): dir format error! -> " }.append(msSearchDir)); }
+        return isRecursive ? GetFilePathsRecursive(vcPaths, msSearchDir, isWithDir) : GetFilePathsCurDir(vcPaths, msSearchDir, isWithDir);
+    }
+}
 
 #endif
