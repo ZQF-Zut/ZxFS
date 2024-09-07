@@ -141,6 +141,7 @@ namespace ZQF::ZxFS
 
             m_nNameBytes = std::strlen(entry_ptr->d_name);
             std::memcpy(m_upCache.get() + m_nWalkDirBytes, entry_ptr->d_name, m_nNameBytes);
+            m_upCache[m_nWalkDirBytes + m_nNameBytes] = {};
             return true;
         }
 
