@@ -1,4 +1,4 @@
-#include <ZxFS/Platform.h>
+#include "Plat.h"
 
 
 #ifdef _WIN32
@@ -6,7 +6,7 @@
 #include <Windows.h>
 
 
-namespace ZQF::ZxFS::Plat
+namespace ZQF::Zut::ZxFS::Plat
 {
     auto PathUTF8ToWide(const std::string_view msPath) -> std::pair<std::wstring_view, std::unique_ptr<wchar_t[]>>
     {
@@ -38,17 +38,17 @@ namespace ZQF::ZxFS::Plat
         cpBuffer[bytes] = {};
         return bytes;
     }
-}
+} // namespace ZQF::Zut::ZxFS::Plat
 #elif __linux__
 #include <unistd.h>
 
 
-namespace ZQF::ZxFS::Plat
+namespace ZQF::Zut::ZxFS::Plat
 {
     auto PathMaxBytes() -> std::size_t
     {
         const auto path_max_byte_ret{ ::pathconf("/", _PC_PATH_MAX) };
         return static_cast<std::size_t>(path_max_byte_ret == -1 ? PATH_MAX : path_max_byte_ret);
     }
-}
+} // namespace ZQF::Zut::ZxFS::Plat
 #endif

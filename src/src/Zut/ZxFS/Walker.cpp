@@ -1,16 +1,15 @@
-#include <ZxFS/Walker.h>
-#include <ZxFS/Core.h>
-#include <ZxFS/Platform.h>
+#include "Walker.h"
+#include "Core.h"
+#include "Plat.h"
 #include <stdexcept>
 
 
 #ifdef _WIN32
-
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     constexpr auto PATH_MAX_BYTES = 0x1000;
 
@@ -79,10 +78,8 @@ namespace ZQF::ZxFS
 
         return false;
     }
-}
-
+} // namespace ZQF::Zut::ZxFS
 #elif __linux__
-
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
@@ -90,7 +87,7 @@ namespace ZQF::ZxFS
 #include <cstring>
 
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     Walker::Walker(const std::string_view msWalkDir)
     {
@@ -147,11 +144,10 @@ namespace ZQF::ZxFS
 
         return false;
     }
-}
-
+} // namespace ZQF::Zut::ZxFS
 #endif
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     auto Walker::GetName() const -> std::string_view
     {
@@ -172,4 +168,4 @@ namespace ZQF::ZxFS
     {
         return ZxFS::FileSuffix(this->GetName()) == msSuffix ? true : false;
     }
-}
+} // namespace ZQF::Zut::ZxFS

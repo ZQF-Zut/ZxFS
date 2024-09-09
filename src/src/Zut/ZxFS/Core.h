@@ -6,7 +6,7 @@
 #include <string_view>
 
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     auto SelfDir() -> std::pair<std::string_view, std::unique_ptr<char[]>>;
     auto SelfPath() -> std::pair<std::string_view, std::unique_ptr<char[]>>;
@@ -26,4 +26,4 @@ namespace ZQF::ZxFS
     auto DirMake(const std::string_view msPath, bool isRecursive) -> bool;
 
     auto Exist(const std::string_view msPath) -> bool;
-} // namespace ZQF::ZxFS
+} // namespace ZQF::Zut::ZxFS

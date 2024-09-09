@@ -1,9 +1,9 @@
-#include <ZxFS/Core.h>
-#include <ZxFS/Platform.h>
+#include "Core.h"
+#include "Plat.h"
 #include <span>
 
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     auto FileName(const std::string_view msPath) -> std::string_view
     {
@@ -52,13 +52,12 @@ namespace ZQF::ZxFS
 }
 
 #ifdef _WIN32
-
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <stack>
 
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     constexpr auto PATH_MAX_BYTES = 0x1000;
 
@@ -278,7 +277,7 @@ namespace ZQF::ZxFS
     {
         return ::GetFileAttributesW(Plat::PathUTF8ToWide(msPath).second.get()) == INVALID_FILE_ATTRIBUTES ? false : true;
     }
-}
+} // namespace ZQF::Zut::ZxFS
 #elif __linux__
 #include <unistd.h>
 #include <fcntl.h>
@@ -287,7 +286,7 @@ namespace ZQF::ZxFS
 #include <cstring>
 
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     auto SelfDir() -> std::pair<std::string_view, std::unique_ptr<char[]>>
     {
@@ -478,8 +477,7 @@ namespace ZQF::ZxFS
     {
         return ::access(msPath.data(), F_OK) != -1;
     }
-}
-
+} // namespace ZQF::Zut::ZxFS
 #endif
 
 

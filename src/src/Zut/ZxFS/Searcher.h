@@ -4,7 +4,7 @@
 #include <string_view>
 
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     class Searcher
     {
@@ -13,4 +13,4 @@ namespace ZQF::ZxFS
         static auto GetFilePaths(std::vector<std::string>& vcPaths, const std::string_view msSearchDir, const bool isWithDir, const bool isRecursive) -> bool;
 
     };
-} // namespace ZQF::ZxFS
+} // namespace ZQF::Zut::ZxFS

@@ -1,5 +1,5 @@
-#include <ZxFS/Searcher.h>
-#include <ZxFS/Platform.h>
+#include "Searcher.h"
+#include "Plat.h"
 #include <stack>
 #include <memory>
 #include <stdexcept>
@@ -10,7 +10,7 @@
 #include <Windows.h>
 
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     constexpr auto PATH_MAX_BYTES = 0x1000;
 
@@ -123,12 +123,12 @@ namespace ZQF::ZxFS
         if (!msSearchDir.ends_with('/')) { throw std::runtime_error(std::string{ "ZxPath::Walk::GetFilePaths(): dir format error! -> " }.append(msSearchDir)); }
         return isRecursive ? GetFilePathsRecursive(vcPaths, msSearchDir, isWithDir) : GetFilePathsCurDir(vcPaths, msSearchDir, isWithDir);
     }
-}
+} // namespace ZQF::Zut::ZxFS
 #elif __linux__
 #include <dirent.h>
 #include <cstring>
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     static auto GetFilePathsCurDir(std::vector<std::string>& vcPaths, const std::string_view msBaseDir, const bool isWithDir) -> bool
     {
@@ -238,6 +238,5 @@ namespace ZQF::ZxFS
         if (!msSearchDir.ends_with('/')) { throw std::runtime_error(std::string{ "ZxPath::Walk::GetFilePaths(): dir format error! -> " }.append(msSearchDir)); }
         return isRecursive ? GetFilePathsRecursive(vcPaths, msSearchDir, isWithDir) : GetFilePathsCurDir(vcPaths, msSearchDir, isWithDir);
     }
-}
-
+} // namespace ZQF::Zut::ZxFS
 #endif

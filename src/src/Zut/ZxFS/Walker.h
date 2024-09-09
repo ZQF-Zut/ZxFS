@@ -4,7 +4,7 @@
 #include <string_view>
 
 
-namespace ZQF::ZxFS
+namespace ZQF::Zut::ZxFS
 {
     class Walker
     {
@@ -28,4 +28,4 @@ namespace ZQF::ZxFS
         auto NextFile() -> bool;
         auto IsSuffix(const std::string_view msSuffix) const -> bool;
     };
-} // namespace ZQF::ZxFS
+} // namespace ZQF::Zut::ZxFS
