@@ -164,7 +164,7 @@ namespace ZQF::Zut::ZxFS
 
             WIN32_FIND_DATAW find_data;
             const auto hfind{ ::FindFirstFileExW(cur_path_ptr, FindExInfoBasic, &find_data, FindExSearchNameMatch, NULL, 0) };
-            if (hfind == INVALID_HANDLE_VALUE){ return false; }
+            if (hfind == INVALID_HANDLE_VALUE) { return false; }
 
             bool is_save_search_dir{ true };
 
@@ -185,13 +185,13 @@ namespace ZQF::Zut::ZxFS
 
                         if (search_dir_name_sv.empty() == false)
                         {
-                            search_dir_stack.push(std::move(std::wstring{ search_dir_name_sv }));
+                            search_dir_stack.push(std::wstring{ search_dir_name_sv });
                         }
                     }
 
                     find_data.cFileName[file_name_chars + 0] = L'/';
                     find_data.cFileName[file_name_chars + 1] = L'*';
-                    search_dir_stack.push(std::move(std::wstring{ search_dir_name_sv }.append(find_data.cFileName, file_name_chars + 2)));
+                    search_dir_stack.push(std::wstring{ search_dir_name_sv }.append(find_data.cFileName, file_name_chars + 2));
                 }
                 else
                 {

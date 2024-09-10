@@ -112,6 +112,7 @@
         "xtr1common": "cpp",
         "xutility": "cpp",
         "set": "cpp",
-        "expected": "cpp"
+        "expected": "cpp",
+        "stack": "cpp"
     },
 }
