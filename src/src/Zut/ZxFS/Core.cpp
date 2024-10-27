@@ -233,44 +233,46 @@ namespace ZQF::Zut::ZxFS
         return ZxFS::DirContentDeleteImp(msPath, false);
     }
 
-    auto DirDelete(const std::string_view msPath, bool isRecursive) -> bool
+    auto DirDelete(const std::string_view msPath) -> bool
     {
-        if (isRecursive) { return ZxFS::DirContentDeleteImp(msPath, true); }
-
         if (!msPath.ends_with('/')) { return false; }
         return ::RemoveDirectoryW(Plat::PathUTF8ToWide(msPath).second.get()) != FALSE;
     }
 
-    auto DirMake(const std::string_view msPath, bool isRecursive) -> bool
+    auto DirDeleteRecursive(const std::string_view msPath) -> bool
+    {
+        return ZxFS::DirContentDeleteImp(msPath, true);
+    }
+
+    auto DirMake(const std::string_view msPath) -> bool
+    {
+        if (!msPath.ends_with('/')) { return false; }
+        const auto path_w = Plat::PathUTF8ToWide(msPath);
+        return ::CreateDirectoryW(path_w.second.get(), nullptr) != FALSE;
+    }
+
+    auto DirMakeRecursive(const std::string_view msPath) -> bool
     {
         if (!msPath.ends_with('/')) { return false; }
 
         const auto path_w = Plat::PathUTF8ToWide(msPath);
+        wchar_t* path_cstr = path_w.second.get();
+        const wchar_t* path_cstr_org = path_cstr;
 
-        if (!isRecursive)
+        while (*path_cstr++)
         {
-            return ::CreateDirectoryW(path_w.second.get(), nullptr) != FALSE;
-        }
-        else
-        {
-            wchar_t* path_cstr = path_w.second.get();
-            const wchar_t* path_cstr_org = path_cstr;
+            if (*path_cstr != L'/') { continue; }
 
-            while (*path_cstr++)
+            *path_cstr = {};
+            if (::GetFileAttributesW(path_cstr_org) == INVALID_FILE_ATTRIBUTES)
             {
-                if (*path_cstr != L'/') { continue; }
-
-                *path_cstr = {};
-                if (::GetFileAttributesW(path_cstr_org) == INVALID_FILE_ATTRIBUTES)
-                {
-                    ::CreateDirectoryW(path_cstr_org, nullptr);
-                }
-                *path_cstr = L'/';
-                path_cstr++;
+                ::CreateDirectoryW(path_cstr_org, nullptr);
             }
-
-            return true;
+            *path_cstr = L'/';
+            path_cstr++;
         }
+
+        return true;
     }
 
     auto Exist(const std::string_view msPath) -> bool
@@ -430,47 +432,52 @@ namespace ZQF::Zut::ZxFS
         return ZxFS::DirContentDeleteImp(msPath, Plat::PathMaxBytes());
     }
 
-    auto DirDelete(const std::string_view msPath, bool isRecursive) -> bool
+    auto DirDelete(const std::string_view msPath) -> bool
     {
         if (!msPath.ends_with('/')) { return false; }
-        if (isRecursive) { ZxFS::DirContentDeleteImp(msPath, Plat::PathMaxBytes()); }
         return ::rmdir(msPath.data()) != -1;
     }
 
-    auto DirMake(const std::string_view msPath, bool isRecursive) -> bool
+    auto DirDeleteRecursive(const std::string_view msPath) -> bool
+    {
+        if (!msPath.ends_with('/')) { return false; }
+        ZxFS::DirContentDeleteImp(msPath, Plat::PathMaxBytes());
+        return ::rmdir(msPath.data()) != -1;
+    }
+
+    auto DirMake(const std::string_view msPath) -> bool
+    {
+        if (!msPath.ends_with('/')) { return false; }
+        return ::mkdir(msPath.data(), 0777) != -1;
+    }
+
+    auto DirMakeRecursive(const std::string_view msPath) -> bool
     {
         if (!msPath.ends_with('/')) { return false; }
 
-        if (!isRecursive)
-        {
-            return ::mkdir(msPath.data(), 0777) != -1;
-        }
-        else
-        {
-            const auto path_buffer{ std::make_unique_for_overwrite<char[]>(msPath.size() + 1) };
-            std::memcpy(path_buffer.get(), msPath.data(), msPath.size() * sizeof(char));
-            path_buffer[msPath.size()] = {};
+        const auto path_buffer{ std::make_unique_for_overwrite<char[]>(msPath.size() + 1) };
+        std::memcpy(path_buffer.get(), msPath.data(), msPath.size() * sizeof(char));
+        path_buffer[msPath.size()] = {};
 
-            char* cur_path_cstr = path_buffer.get();
-            const char* org_path_cstr = path_buffer.get();
+        char* cur_path_cstr = path_buffer.get();
+        const char* org_path_cstr = path_buffer.get();
 
-            while (*cur_path_cstr++ != '\0')
+        while (*cur_path_cstr++ != '\0')
+        {
+            if (*cur_path_cstr != '/') { continue; }
+
+            *cur_path_cstr = {};
             {
-                if (*cur_path_cstr != '/') { continue; }
-
-                *cur_path_cstr = {};
+                if (::access(org_path_cstr, X_OK) == -1)
                 {
-                    if (::access(org_path_cstr, X_OK) == -1)
-                    {
-                        ::mkdir(org_path_cstr, 0777);
-                    }
+                    ::mkdir(org_path_cstr, 0777);
                 }
-                *cur_path_cstr = '/';
-                cur_path_cstr++;
             }
-
-            return true;
+            *cur_path_cstr = '/';
+            cur_path_cstr++;
         }
+
+        return true;
     }
 
     auto Exist(const std::string_view msPath) -> bool

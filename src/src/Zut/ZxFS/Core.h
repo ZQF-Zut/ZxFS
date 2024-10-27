@@ -22,8 +22,10 @@ namespace ZQF::Zut::ZxFS
     auto FileSize(const std::string_view msPath) -> std::optional<std::uint64_t>;
 
     auto DirContentDelete(const std::string_view msPath) -> bool;
-    auto DirDelete(const std::string_view msPath, bool isRecursive) -> bool;
-    auto DirMake(const std::string_view msPath, bool isRecursive) -> bool;
+    auto DirDelete(const std::string_view msPath) -> bool;
+    auto DirDeleteRecursive(const std::string_view msPath) -> bool;
+    auto DirMake(const std::string_view msPath) -> bool;
+    auto DirMakeRecursive(const std::string_view msPath) -> bool;
 
     auto Exist(const std::string_view msPath) -> bool;
 } // namespace ZQF::Zut::ZxFS
