@@ -57,7 +57,7 @@ namespace ZQF::Zut::ZxFS
 
         const auto file_path_u8_cache = std::make_unique_for_overwrite<char[]>(PATH_MAX_BYTES);
         char* file_path_u8_ptr = file_path_u8_cache.get();
-        const auto file_path_prefix_u8_bytes{ isWithDir ? (msBaseDir.size() * sizeof(char)) : 0};
+        const auto file_path_prefix_u8_bytes{ isWithDir ? (msBaseDir.size() * sizeof(char)) : 0 };
         if (isWithDir) { std::memcpy(file_path_u8_ptr, msBaseDir.data(), file_path_prefix_u8_bytes); }
 
         const auto cur_dir_cache = std::make_unique_for_overwrite<wchar_t[]>(PATH_MAX_BYTES / sizeof(wchar_t));

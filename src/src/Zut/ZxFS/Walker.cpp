@@ -154,6 +154,11 @@ namespace ZQF::Zut::ZxFS
         return { m_upCache.get() + m_nWalkDirBytes, m_nNameBytes };
     }
 
+    auto Walker::GetNameStem() const -> std::string_view
+    {
+        return ZxFS::FileNameStem(this->GetName());
+    }
+
     auto Walker::GetPath() const -> std::string_view
     {
         return { m_upCache.get(), m_nWalkDirBytes + m_nNameBytes };

@@ -21,6 +21,7 @@ namespace ZQF::Zut::ZxFS
     public:
         auto GetPath() const->std::string_view;
         auto GetName() const->std::string_view;
+        auto GetNameStem() const->std::string_view;
         auto GetWalkDir() const->std::string_view;
 
     public:

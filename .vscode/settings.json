@@ -113,6 +113,7 @@
         "xutility": "cpp",
         "set": "cpp",
         "expected": "cpp",
-        "stack": "cpp"
+        "stack": "cpp",
+        "queue": "cpp"
     },
 }
